@@ -155,39 +155,57 @@ def main():
                 if done:
                     s["done"] = True
                     s["reward"] = float(rew)
+                    flush_case(out_cases, results, s, args.save_traj)
 
-        for s in states:
-            t = s["task"]
-            rec = {
-                "task_id": t.get("id"),
-                "goal": t.get("goal"),
-                "difficulty": t["misc"].get("difficulty"),
-                "max_depth": t["misc"].get("max_depth"),
-                "gold_plan_len": len(t["misc"].get("gold_trajectory", [])),
-                "gt_plan": s["gt_plan"],
-                "success": s["reward"] == 1.0,
-                "reward": s["reward"],
-                "turns_used": s["turns"],
-                "trajectory": s["traj"] if args.save_traj else None,
-            }
-            out_cases.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            results.append({k: rec[k] for k in
-                            ("task_id", "difficulty", "success", "reward",
-                             "turns_used", "gold_plan_len")})
+        for s in states:          # 收尾:把跑满步数上限仍未完成的题落盘
+            if not s.get("flushed"):
+                flush_case(out_cases, results, s, args.save_traj)
         out_cases.flush()
         done_n = b0 + len(batch)
-        acc = sum(r["success"] for r in results) / len(results)
+        acc = sum(r["success"] for r in results) / max(len(results), 1)
         print(f"[eval] {done_n}/{len(tasks)} 题完成, 当前总体成功率 {acc:.3f}, "
               f"已用 {(time.time()-t_start)/60:.1f} 分钟", flush=True)
+        write_metrics(args, results, t_start)
 
     out_cases.close()
+    write_metrics(args, results, t_start, final=True)
 
-    # ---- 汇总指标 ----
+
+def flush_case(out_cases, results, s, save_traj=True):
+    """把一道题的完整结果写进 jsonl 并累计进汇总。每题一结束就调用,
+    这样即便作业撞墙钟被杀,已完成的题也全部保住。"""
+    if s.get("flushed"):
+        return
+    s["flushed"] = True
+    t = s["task"]
+    rec = {
+        "task_id": t.get("id"),
+        "goal": t.get("goal"),
+        "difficulty": t["misc"].get("difficulty"),
+        "max_depth": t["misc"].get("max_depth"),
+        "gold_plan_len": len(t["misc"].get("gold_trajectory", [])),
+        "gt_plan": s["gt_plan"],
+        "success": s["reward"] == 1.0,
+        "reward": s["reward"],
+        "turns_used": s["turns"],
+        "trajectory": s["traj"] if save_traj else None,
+    }
+    out_cases.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    out_cases.flush()
+    results.append({k: rec[k] for k in
+                    ("task_id", "difficulty", "success", "reward",
+                     "turns_used", "gold_plan_len")})
+
+
+
+def write_metrics(args, results, t_start, final=False):
+    """汇总指标。评测过程中定期落盘,作业撞墙钟也能保住已完成部分。"""
     by_diff = defaultdict(list)
     for r in results:
         by_diff[r["difficulty"]].append(r["success"])
     em = [r["success"] for r in results if r["difficulty"] in ("easy", "medium")]
     metrics = {
+        "completed": final,
         "model": args.model,
         "split": args.split,
         "difficulties": args.difficulties,
@@ -207,6 +225,8 @@ def main():
     }
     with open(args.out + "_metrics.json", "w") as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
+    if not final:
+        return
 
     print("\n===== 评测完成 =====")
     print(json.dumps({k: v for k, v in metrics.items() if k != "per_difficulty"},
