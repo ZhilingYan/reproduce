@@ -75,6 +75,10 @@ def main():
     ap.add_argument("--difficulties", nargs="+",
                     default=["easy", "medium", "hard", "extreme"])
     ap.add_argument("--limit", type=int, default=0, help=">0 时只跑前 N 题(调试)")
+    ap.add_argument("--resume", action="store_true",
+                    help="断点续跑:跳过 <out>_cases.jsonl 里已完成的题,结果追加写入")
+    ap.add_argument("--task-ids", nargs="+", default=None,
+                    help="只跑指定 task_id(调试单题用),如 textcraft_synth.val.74")
     ap.add_argument("--max-steps", type=int, default=200, help="每题的 episode 步数上限")
     ap.add_argument("--history-length", type=int, default=2, help="与训练一致的滑窗长度")
     ap.add_argument("--temperature", type=float, default=0.4)
@@ -92,8 +96,30 @@ def main():
     from transformers import AutoTokenizer
 
     tasks = load_tasks(args.split, args.difficulties)
+    if args.task_ids:
+        want = set(args.task_ids)
+        tasks = [t for t in tasks if t.get("id") in want]
+        if not tasks:
+            raise SystemExit(f"没有匹配的 task_id: {args.task_ids}")
     if args.limit > 0:
         tasks = tasks[:args.limit]
+
+    # 断点续跑:已完成的题直接跳过,其汇总记录也一并载入,最终指标仍覆盖全部题
+    prior_results = []
+    cases_path = args.out + "_cases.jsonl"
+    if args.resume and os.path.exists(cases_path):
+        done_ids = set()
+        for line in open(cases_path):
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue      # 上次被杀时写了半行,丢弃
+            done_ids.add(r["task_id"])
+            prior_results.append({k: r[k] for k in
+                                  ("task_id", "difficulty", "success", "reward",
+                                   "turns_used", "gold_plan_len")})
+        tasks = [t for t in tasks if t.get("id") not in done_ids]
+        print(f"[eval] 续跑:已完成 {len(done_ids)} 题,跳过;剩余 {len(tasks)} 题", flush=True)
     print(f"[eval] split={args.split} 难度={args.difficulties} 题数={len(tasks)}", flush=True)
 
     tok = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
@@ -103,8 +129,8 @@ def main():
     sp = SamplingParams(temperature=args.temperature, max_tokens=args.max_new_tokens)
 
     db = get_shared_recipe_db()
-    out_cases = open(args.out + "_cases.jsonl", "w")
-    results = []
+    out_cases = open(cases_path, "a" if args.resume else "w")
+    results = list(prior_results)
     t_start = time.time()
 
     # 分批推进:每批 batch_size 道题同时走,批内用 vLLM 一次生成多条,吞吐高
