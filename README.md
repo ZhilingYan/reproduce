@@ -251,3 +251,9 @@ TASK.md                                                  # 新增: 任务说明�
 
 成功判定与 RAO 官方一致:**净合成量**达标(当前库存 − 初始库存 ≥ 目标数),即开局已持有
 目标物品不计入,必须新合成。gold 轨迹回放 3154/3154 全部可执行(环境正确性验证)。
+
+---
+
+## License
+
+MIT (see `LICENSE`). Upstream verl / SDAR portions remain under Apache-2.0; attribution in `Notice.txt`.

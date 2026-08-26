@@ -19,7 +19,7 @@ name = "sdar"
 dynamic = ["version", "dependencies", "optional-dependencies", "authors", "urls"]
 
 description = "SDAR: Self-Distillation with Adaptive Revision for LLM"
-license = {file = "LICENSE"}  # or "Apache-2.0", if you prefer an SPDX identifier
+license = {file = "LICENSE"}  # MIT for original contributions; upstream verl/SDAR portions remain Apache-2.0 (see LICENSE, Notice.txt)
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.8"
 
