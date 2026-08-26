@@ -70,7 +70,7 @@ python scripts_rso/eval_full_val.py \
 
 ## 三、数据
 
-任务数据已随仓库提供,无需下载:
+数据来自 https://github.com/archiki/ADaPT/tree/main :
 
 ```
 agent_system/environments/env_package/textcraft_synth/data/
@@ -80,8 +80,7 @@ agent_system/environments/env_package/textcraft_synth/data/
 └── val100_ids.json               # val100 的任务 id 清单 + 抽样种子(保证跨实验一致)
 ```
 
-数据由 RAO 官方生成器(`synth_recipe_generator.py`, seed=42)产出,与论文同源。难度 =
-合成树深度:easy 2-3 层、medium 4-6、hard 7-9、extreme 10-12。
+难度 = 合成树深度:easy 2-3 层、medium 4-6、hard 7-9、extreme 10-12。
 
 **当前实验口径**:训练用 easy+medium(1440 题);验证用 val100(100 题,含 hard/extreme
 作为泛化探针)。理由见第六节。
