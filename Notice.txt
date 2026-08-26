@@ -5,3 +5,18 @@ Copyright 2023-2024 Bytedance Ltd. and/or its affiliates
 Additional modifications and contributions:
 
 Copyright 2025 Nanyang Technological University (NTU), Singapore and the verl-agent (GiGPO) team.
+
+---
+
+Licensing of this repository (2026):
+
+The original contributions in this repository -- the TextCraft-Synth
+environment port (agent_system/environments/env_package/textcraft_synth),
+the state-block prompt logic, the evaluation and preparation scripts in
+scripts_rso/, the run scripts in examples/rso_8gpu/, and the accompanying
+documentation -- are released under the MIT License (see LICENSE).
+
+Code inherited from the verl project and from verl-agent / SDAR remains
+under the Apache License, Version 2.0, as noted in the license headers of
+the respective source files. MIT and Apache-2.0 are compatible; the combined
+work may be redistributed provided both notices are retained.

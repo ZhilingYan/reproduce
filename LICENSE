@@ -19,16 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Third-party components
-
-This repository builds on code from the verl project (Copyright 2023-2024
-Bytedance Ltd. and/or its affiliates) and verl-agent / SDAR (Copyright 2025
-Nanyang Technological University and the verl-agent (GiGPO) team), both
-distributed under the Apache License, Version 2.0. Those portions remain under
-Apache-2.0; see Notice.txt and the license headers in the respective source
-files. The TextCraft-Synth environment port, the state-block prompt logic,
-the evaluation scripts, and the run scripts in examples/rso_8gpu and
-scripts_rso are original contributions released under the MIT License above.
