@@ -115,9 +115,7 @@ def main():
             except json.JSONDecodeError:
                 continue      # 上次被杀时写了半行,丢弃
             done_ids.add(r["task_id"])
-            prior_results.append({k: r[k] for k in
-                                  ("task_id", "difficulty", "success", "reward",
-                                   "turns_used", "gold_plan_len")})
+            prior_results.append({k: r.get(k, 0) for k in RESULT_KEYS})
         tasks = [t for t in tasks if t.get("id") not in done_ids]
         print(f"[eval] 续跑:已完成 {len(done_ids)} 题,跳过;剩余 {len(tasks)} 题", flush=True)
     print(f"[eval] split={args.split} 难度={args.difficulties} 题数={len(tasks)}", flush=True)
@@ -147,7 +145,10 @@ def main():
             states.append({"task": t, "task_obs": obs, "last_result": "",
                            "prev_obs": obs, "history": [], "done": False,
                            "reward": 0.0, "turns": 0, "traj": [],
-                           "gt_plan": info.get("extra.gt_plan", "")})
+                           "gt_plan": info.get("extra.gt_plan", ""),
+                           # token 消耗(2026-08-26 加):整条轨迹的 input / output token 累计。
+                           # 训练与训练中 val 不算这个;只有本脚本(final 全量 val)算。
+                           "input_tokens": 0, "output_tokens": 0})
 
         for step in range(args.max_steps):
             live = [i for i, s in enumerate(states) if not s["done"]]
@@ -166,6 +167,13 @@ def main():
             for k, i in enumerate(live):
                 s = states[i]
                 raw = outs[k].outputs[0].text
+                # 精确 token 数直接取 vLLM 的返回值(它生成时用的就是这些 id),不重新 tokenize:
+                # prompt_token_ids = 这一轮模型实际吃进去的完整 prompt(含 chat template);
+                # outputs[0].token_ids = 这一轮生成的 token(含结束符)。
+                n_in = len(outs[k].prompt_token_ids or [])
+                n_out = len(outs[k].outputs[0].token_ids or [])
+                s["input_tokens"] += n_in
+                s["output_tokens"] += n_out
                 actions, valids = textcraft_synth_projection([raw])
                 obs, rew, done, info = envs[i].step(actions[0])
                 s["turns"] += 1
@@ -177,6 +185,7 @@ def main():
                         "turn": s["turns"], "prompt": prompts[k], "output": raw,
                         "action": actions[0], "valid": int(valids[0]),
                         "env_feedback": obs, "reward": float(rew), "done": bool(done),
+                        "input_tokens": n_in, "output_tokens": n_out,
                     })
                 if done:
                     s["done"] = True
@@ -197,6 +206,11 @@ def main():
     write_metrics(args, results, t_start, final=True)
 
 
+# 每题进汇总(results)的字段;--resume 读旧 _cases.jsonl 时缺的键(老文件没有 token 字段)补 0
+RESULT_KEYS = ("task_id", "difficulty", "success", "reward", "turns_used", "gold_plan_len",
+               "input_tokens", "output_tokens", "total_tokens")
+
+
 def flush_case(out_cases, results, s, save_traj=True):
     """把一道题的完整结果写进 jsonl 并累计进汇总。每题一结束就调用,
     这样即便作业撞墙钟被杀,已完成的题也全部保住。"""
@@ -214,13 +228,33 @@ def flush_case(out_cases, results, s, save_traj=True):
         "success": s["reward"] == 1.0,
         "reward": s["reward"],
         "turns_used": s["turns"],
+        # 整条轨迹的 token 消耗:每轮 prompt 都重新编码全部历史,input 随轮数近似平方增长,
+        # 所以 input 远大于 output——这正是 RAO 论文表 9 比较 single vs recursive 的口径。
+        "input_tokens": int(s.get("input_tokens", 0)),
+        "output_tokens": int(s.get("output_tokens", 0)),
+        "total_tokens": int(s.get("input_tokens", 0)) + int(s.get("output_tokens", 0)),
         "trajectory": s["traj"] if save_traj else None,
     }
     out_cases.write(json.dumps(rec, ensure_ascii=False) + "\n")
     out_cases.flush()
-    results.append({k: rec[k] for k in
-                    ("task_id", "difficulty", "success", "reward",
-                     "turns_used", "gold_plan_len")})
+    results.append({k: rec[k] for k in RESULT_KEYS})
+
+
+def _token_stats(rs):
+    """一组题的 token 汇总:均值 / 中位 / 最大,以及 input 与 output 各自的均值。"""
+    if not rs:
+        return None
+    tot = sorted(r.get("total_tokens", 0) for r in rs)
+    n = len(tot)
+    return {
+        "n": n,
+        "mean_input_tokens": sum(r.get("input_tokens", 0) for r in rs) / n,
+        "mean_output_tokens": sum(r.get("output_tokens", 0) for r in rs) / n,
+        "mean_total_tokens": sum(tot) / n,
+        "median_total_tokens": tot[n // 2],
+        "max_total_tokens": tot[-1],
+        "sum_total_tokens": sum(tot),
+    }
 
 
 
@@ -246,6 +280,15 @@ def write_metrics(args, results, t_start, final=False):
         "mean_turns_used_on_success": (
             sum(r["turns_used"] for r in results if r["success"])
             / max(sum(r["success"] for r in results), 1)),
+        # token 消耗(2026-08-26 加):每题一整条轨迹的 input/output token,按 全部 / 分难度 /
+        # 成功 vs 失败 汇总。数值来自 vLLM 返回的精确 token id 计数。
+        "tokens": {
+            "overall": _token_stats(results),
+            "per_difficulty": {d: _token_stats([r for r in results if r["difficulty"] == d])
+                               for d in sorted(by_diff)},
+            "on_success": _token_stats([r for r in results if r["success"]]),
+            "on_failure": _token_stats([r for r in results if not r["success"]]),
+        },
         "wallclock_minutes": (time.time() - t_start) / 60,
         "cases_file": os.path.basename(args.out + "_cases.jsonl"),
     }
