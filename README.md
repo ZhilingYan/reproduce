@@ -179,9 +179,21 @@ $OUT/
 | `episode/valid_action_ratio` | 动作格式合规率(应 >0.98) |
 | `critic/advantages/max` | GRPO 优势幅度(为 0 表示组内无方差 = 学不到东西) |
 
-**参考基线**(Qwen3-4B-Instruct-2507,训练前零样本,4 卡 A100-40G 实测):
-val 总 0.29-0.32 / easy 0.76-0.80 / medium 0.40-0.48 / easy+medium 0.58-0.64 /
-hard 与 extreme 0.00。换模型后数值会不同,但 **medium 显著非零** 是环境正常的标志。
+**参考基线**(Qwen3-4B-Instruct-2507 未训练基座,`scripts_rso/eval_full_val.py`,
+temperature=0,max_steps=2000,全量 632 题):
+
+| 难度 | 题数 | 成功率 | 平均轮数 |
+|---|---|---|---|
+| easy | 147 | 0.898 | 62 |
+| medium | 213 | 0.432 | 303 |
+| hard | 136 | 0.007 | 1018 |
+| extreme | 136 | 0.000 | 950 |
+| easy+medium | 360 | 0.622 | |
+| **全部** | **632** | **0.356** | |
+
+训练中途的 val100 子集(temperature=0.4)数值略低:总 0.29-0.32 / easy 0.76-0.80 /
+medium 0.40-0.48。换模型后数值会不同,但 **medium 显著非零** 是环境正常的标志;
+hard/extreme 接近 0 是预期内的(失败绝大多数死于循环检测而非耗尽步数,属平铺方法的能力上限)。
 
 ---
 
