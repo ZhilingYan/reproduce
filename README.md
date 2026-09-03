@@ -34,6 +34,7 @@ tensorboard --logdir $HOME/rso_runs/q35_4b_grpo/tensorboard
 python scripts_rso/eval_full_val.py \
   --model $HOME/rso_runs/q35_4b_grpo/ckpts/global_step_150/actor/huggingface \
   --out   $HOME/rso_runs/q35_4b_grpo/eval_full --split val --tp 2
+# 默认即为正式评测口径:max_steps=2000, temperature=0(贪心)
 ```
 
 三条 baseline 分别是:
@@ -138,8 +139,12 @@ MODEL=Qwen/Qwen3.5-9B  TP=4 MICRO_BSZ=1 OUT=$HOME/rso_runs/q35_9b_grpo \
 ```bash
 python scripts_rso/eval_full_val.py \
   --model <ckpt 或 HF 模型名> --out <输出前缀> \
-  --split val --max-steps 200 --tp 2
+  --split val --tp 2
 ```
+
+评测口径(脚本默认值,无需显式传):`max_steps=2000`、`temperature=0`(贪心解码,
+与 RAO 官方推理协议一致)。深题的 gold 最多 209 步,2000 步给足余量,
+确保失败反映的是能力上限而非预算不足。
 
 产出两个文件:
 

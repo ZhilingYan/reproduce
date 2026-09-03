@@ -79,9 +79,12 @@ def main():
                     help="断点续跑:跳过 <out>_cases.jsonl 里已完成的题,结果追加写入")
     ap.add_argument("--task-ids", nargs="+", default=None,
                     help="只跑指定 task_id(调试单题用),如 textcraft_synth.val.74")
-    ap.add_argument("--max-steps", type=int, default=200, help="每题的 episode 步数上限")
+    ap.add_argument("--max-steps", type=int, default=2000,
+                    help="每题的 episode 步数上限。默认 2000 是正式评测口径:"
+                         "深题的 gold 最多 209 步,2000 给足余量,确保失败反映能力而非预算")
     ap.add_argument("--history-length", type=int, default=2, help="与训练一致的滑窗长度")
-    ap.add_argument("--temperature", type=float, default=0.4)
+    ap.add_argument("--temperature", type=float, default=0.0,
+                    help="默认 0(贪心解码),与 RAO 官方推理协议一致,结果可复现")
     ap.add_argument("--max-new-tokens", type=int, default=512)
     ap.add_argument("--batch-size", type=int, default=64,
                     help="同时推进的题数(越大越快,显存换速度)")

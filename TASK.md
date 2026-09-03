@@ -104,12 +104,13 @@ MODEL=Qwen/Qwen3.5-4B OUT=$HOME/rso_runs/qwen35_4b_grpo TP=2 MICRO_BSZ=2 \
 python scripts_rso/eval_full_val.py \
   --model $HOME/rso_runs/qwen35_4b_grpo/ckpts/global_step_150/actor/huggingface \
   --out   $HOME/rso_runs/qwen35_4b_grpo/eval_full \
-  --split val --max-steps 200 --tp 2
+  --split val --tp 2
 ```
 
 注意:
 - `--split val` 是**全量 632 题**(训练中途的验证用的是 100 题子集,不能替代);
-- `--max-steps 200` 给评测更宽的预算(评测只跑一次,成本可接受);
+- 评测口径由脚本默认值给出:`max_steps=2000`、`temperature=0`(贪心解码,与 RAO 官方
+  推理协议一致),无需显式传参。深题 gold 最多 209 步,2000 步确保失败反映能力而非预算;
 - 9B 用 `--tp 4`;
 - 也请对**未训练的基座模型**跑一次同样的评测作为"训练前基线"
   (`--model Qwen/Qwen3.5-4B`),这样才有 before/after 的对比。
