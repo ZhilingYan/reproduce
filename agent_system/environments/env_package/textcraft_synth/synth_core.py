@@ -106,6 +106,12 @@ _GETINFO_RE = re.compile(r"^get_info\s+(.+)$")
 
 LOOP_REPEAT_LIMIT = 4   # 同一动作连续重复达到该次数 → 判死循环终止(官方保护的移植)
 
+# 2026-08-24 为 RAO 递归加:委托那一轮 lockstep 仍要给环境一个动作占位(官方的父协程直接挂起,
+# 不需要)。占位动作必须【不改状态、不参与循环检测】——若用 'inventory' 当占位,root→子→孙→曾孙
+# 连续四层各委托一次,环境会连续收到 4 个 'inventory',被上面的循环检测误判为死循环终止整局。
+# 这个动作只计步数(与采集循环的轮数保持一致),其余什么都不做。flat 的模型永远不会输出它。
+NOOP_ACTION = "__rao_noop__"
+
 
 class SynthTextCraftEnv:
     def __init__(self, recipe_db: SynthRecipeDB = None):
@@ -113,11 +119,24 @@ class SynthTextCraftEnv:
         self._task = None
 
     # ---------------- reset ----------------
-    def reset(self, task: dict, max_steps_override: int = None) -> Tuple[str, dict]:
+    def reset(self, task: dict, max_steps_override: int = None,
+              append_state_block: bool = True,
+              loop_detection: bool = True) -> Tuple[str, dict]:
         """max_steps_override: 覆盖任务自带的步数预算。任务 jsonl 里写的是 75,
         但官方推理/训练实际用 config 覆盖(如 800)——深任务的 gold 本身就超 75 步,
-        不覆盖的话按任务预算根本走不完。SDAR 侧应传 config.env.max_steps 进来。"""
+        不覆盖的话按任务预算根本走不完。SDAR 侧应传 config.env.max_steps 进来。
+
+        append_state_block(2026-08-24 为 RAO 递归加,默认 True 即 flat 原行为):
+        True  = 每步观测末尾拼上环境级状态块(配方笔记本 + 库存快照),flat 三条 baseline 用;
+        False = 只返回纯动作结果。递归模式必须传 False:状态块若由环境维护,是"每局一份",
+                父节点查过的配方会经观测文本泄漏给子节点,违反 RAO 子 agent 全新上下文的语义;
+                递归模式改由适配器按【节点】维护私有状态块,原料从 info['extra.last_get_info']
+                和 info['extra.inventory'] 取(见 _info)。"""
         self._task = task
+        self.append_state_block = bool(append_state_block)
+        # 递归模式传 False:槽级循环检测分不清节点,改由适配器按节点检测(见 step 里的注释)
+        self.loop_detection = bool(loop_detection)
+        self._last_get_info = None
         self.goal_text = task["goal"]
         self.targets: Dict[str, int] = dict(task["misc"]["target_items"])
         self.inventory: Dict[str, int] = dict(task["misc"]["initial_inventory"])
@@ -163,23 +182,42 @@ class SynthTextCraftEnv:
             "extra.difficulty": self._task["misc"].get("difficulty"),
             "extra.max_depth": self._task["misc"].get("max_depth"),
             "extra.task_id": self._task.get("id"),
+            # ---- 以下三键 2026-08-24 为 RAO 递归加,flat 的 manager 不读它们,零影响 ----
+            # extra.inventory: 当前库存快照。递归适配器用它做两件事:①节点开张时存 open_snapshot,
+            #   之后按"当前 − 开张时 ≥ 需求"判节点成败(对应官方 env.py:620-636 的净增量判定,
+            #   取代旧实现正则匹配观测文本的做法,即审查报告 P3 的根源);②按节点渲染库存快照。
+            "extra.inventory": dict(self.inventory),
+            # extra.target_items: root 的目标,来自数据集(对应官方 task.misc["target_items"],
+            #   env.py:565);子节点的目标来自委托解析,不经这里。
+            "extra.target_items": dict(self.targets),
+            # extra.last_get_info: 上一步若是 get_info,其【结构化】结果(list of dict);否则 None。
+            #   递归适配器据此往【当前节点自己的】配方笔记本里记,不必解析观测文本。
+            "extra.last_get_info": self._last_get_info,
         }
 
     # ---------------- step ----------------
     def step(self, action: str) -> Tuple[str, float, bool, dict]:
         action = (action or "").strip()
         self.steps += 1
+        self._last_get_info = None      # 每步先清,只有本步是 get_info 时才由 _get_info 填
 
-        # 循环检测(官方保护机制):同一动作连续重复即时止损
-        if action == self._last_action:
-            self._repeat_count += 1
-        else:
-            self._repeat_count = 1
-            self._last_action = action
-        if self._repeat_count >= LOOP_REPEAT_LIMIT:
-            obs = ("Loop detected: the same action was repeated "
-                   f"{self._repeat_count} times. Episode terminated.")
-            return obs, 0.0, True, self._info()
+        if action == NOOP_ACTION:       # 递归模式的委托占位:只计步,不动状态,不进循环检测
+            return "", 0.0, self.steps >= self.max_steps, self._info()
+
+        # 循环检测(官方保护机制):同一动作连续重复即时止损。
+        # 递归模式(loop_detection=False)关闭它:这里的检测是【整个环境槽】级的,分不清动作是
+        # 树上哪个节点发的,一个子节点打转会把整棵树杀掉(冒烟 21461096 验证集 7/16 棵树这样死的);
+        # 官方检测是每个 agent 各自做的(agent.py:90-118),递归模式改由适配器按节点检测。
+        if self.loop_detection:
+            if action == self._last_action:
+                self._repeat_count += 1
+            else:
+                self._repeat_count = 1
+                self._last_action = action
+            if self._repeat_count >= LOOP_REPEAT_LIMIT:
+                obs = ("Loop detected: the same action was repeated "
+                       f"{self._repeat_count} times. Episode terminated.")
+                return obs, 0.0, True, self._info()
 
         obs = self._execute(action)
 
@@ -192,7 +230,9 @@ class SynthTextCraftEnv:
             return obs + "\nAll target items crafted. Task complete!", 1.0, True, self._info()
 
         done = self.steps >= self.max_steps
-        return obs + self._state_block(), 0.0, done, self._info()
+        # flat:拼环境级状态块(原行为);递归:纯结果,状态块由适配器按节点维护(见 reset 注释)
+        tail = self._state_block() if self.append_state_block else ""
+        return obs + tail, 0.0, done, self._info()
 
     # ---------------- 动作执行 ----------------
     def _execute(self, action: str) -> str:
@@ -258,6 +298,7 @@ class SynthTextCraftEnv:
                     f"   (depth {self.db.get_crafting_depth(item)})")
             elif self.db.is_base_item(item):
                 self.known_recipes[item] = f"{item}: base ingredient, cannot be crafted"
+        self._last_get_info = out       # 结构化结果留给 _info,供递归适配器按节点记笔记
         return repr(out)
 
     # craft:逐条复刻官方错误路径(措辞保持一致,便于和官方行为对表)

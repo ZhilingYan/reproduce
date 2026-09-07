@@ -81,7 +81,8 @@ def main():
                     help="只跑指定 task_id(调试单题用),如 textcraft_synth.val.74")
     ap.add_argument("--max-steps", type=int, default=2000,
                     help="每题的 episode 步数上限。默认 2000 是正式评测口径:"
-                         "深题的 gold 最多 209 步,2000 给足余量,确保失败反映能力而非预算")
+                         "深题的 gold 最多 209 步,2000 给足余量,确保失败反映能力而非预算;"
+                         "训练中的快速 val 用 100;--recursive 时它是 lockstep 全局轮数上限")
     ap.add_argument("--history-length", type=int, default=2, help="与训练一致的滑窗长度")
     ap.add_argument("--temperature", type=float, default=0.0,
                     help="默认 0(贪心解码),与 RAO 官方推理协议一致,结果可复现")
@@ -93,6 +94,16 @@ def main():
     ap.add_argument("--save-traj", action="store_true", default=True,
                     help="在 _cases.jsonl 里保存逐轮完整轨迹(默认开)")
     ap.add_argument("--no-save-traj", dest="save_traj", action="store_false")
+    # ---- RAO 递归分支(2026-08-26 加)。对照官方 run_synth_inference.py:119 的 use_recursive_agent 开关:
+    #      同一脚本、同一批题、同一温度/步数口径,只换执行引擎(递归编排器)。----
+    ap.add_argument("--recursive", action="store_true",
+                    help="用 RAO 递归编排器评测(模型可 delegate);--max-steps 此时是整棵树的全局轮数上限")
+    ap.add_argument("--per-agent-steps", type=int, default=25,
+                    help="[recursive] 每个 agent(含 root)的独立步数预算,官方 25(synth_rollout.py:89)")
+    ap.add_argument("--max-depth", type=int, default=6,
+                    help="[recursive] 委托树深度上限,官方训练 6(synth_rollout.py:83);论文说评测放宽到 12")
+    ap.add_argument("--trace-dir", default=None,
+                    help="[recursive] tree_trace 落盘目录,默认 <out>_tree_trace;传 none 关闭")
     args = ap.parse_args()
 
     from vllm import LLM, SamplingParams
@@ -118,7 +129,10 @@ def main():
             except json.JSONDecodeError:
                 continue      # 上次被杀时写了半行,丢弃
             done_ids.add(r["task_id"])
-            prior_results.append({k: r.get(k, 0) for k in RESULT_KEYS})
+            row = {k: r.get(k, 0) for k in RESULT_KEYS}
+            if r.get("tree"):
+                row.update({k: r["tree"].get(k) for k in TREE_KEYS})
+            prior_results.append(row)
         tasks = [t for t in tasks if t.get("id") not in done_ids]
         print(f"[eval] 续跑:已完成 {len(done_ids)} 题,跳过;剩余 {len(tasks)} 题", flush=True)
     print(f"[eval] split={args.split} 难度={args.difficulties} 题数={len(tasks)}", flush=True)
@@ -133,6 +147,17 @@ def main():
     out_cases = open(cases_path, "a" if args.resume else "w")
     results = list(prior_results)
     t_start = time.time()
+
+    if args.recursive:
+        def generate(prompts):
+            """vLLM 批量生成:返回 [(文本, 输入 token 数, 输出 token 数)],token 数取精确 id 计数。"""
+            outs = llm.generate(prompts, sp, use_tqdm=False)
+            return [(o.outputs[0].text, len(o.prompt_token_ids or []), len(o.outputs[0].token_ids or []))
+                    for o in outs]
+        run_recursive_eval(args, tasks, tok, generate, db, out_cases, results, t_start)
+        out_cases.close()
+        write_metrics(args, results, t_start, final=True)
+        return
 
     # 分批推进:每批 batch_size 道题同时走,批内用 vLLM 一次生成多条,吞吐高
     for b0 in range(0, len(tasks), args.batch_size):
@@ -212,6 +237,130 @@ def main():
 # 每题进汇总(results)的字段;--resume 读旧 _cases.jsonl 时缺的键(老文件没有 token 字段)补 0
 RESULT_KEYS = ("task_id", "difficulty", "success", "reward", "turns_used", "gold_plan_len",
                "input_tokens", "output_tokens", "total_tokens")
+# 递归分支额外进汇总的树统计(flat 题没有这些键,write_metrics 只在存在时汇总)
+TREE_KEYS = ("n_nodes", "max_depth", "delegated", "n_subagents", "subagent_success",
+             "n_preexisting", "n_stuck", "root_turns", "sub_turns")
+
+
+# =============================================================================
+# RAO 递归分支。对照官方 run_synth_inference.py:111-154(选 rollout_fn → 跑 → 出 report)与
+# platoon/inference/workflow.py:66-142(report 里的 steps total / root / sub、按深度计数)。
+# 执行引擎复用训练时验证过的三件套:LocalSynthEnvs(不经 Ray 的批量封装,与测试同款)
+# + TextCraftSynthRecursiveAdapter + RecursiveEnvironmentManager;每轮 vLLM 批量生成。
+# =============================================================================
+class LocalSynthEnvs:
+    """batch_size 个 SynthTextCraftEnv 的顺序批量封装,接口与训练用 TextCraftSynthEnvs 一致。
+    递归模式必须:append_state_block=False(状态块由适配器按节点维护)、loop_detection=False
+    (循环检测按节点做)、底层步数上限不限(全局轮数上限由外层循环给),与 recursive_factory 同款。"""
+
+    def __init__(self, tasks, db):
+        self.db = db
+        self.set_tasks(tasks)
+
+    def set_tasks(self, tasks):
+        """换下一批题。整个评测只建一个编排器(否则 tree_trace 的文件计数器每批归零、互相覆盖),
+        每批只换底层任务列表;槽数随本批题数变化,编排器 reset 时按 obs 长度重建槽状态。"""
+        self.tasks = list(tasks)
+        self.envs = [SynthTextCraftEnv(self.db) for _ in self.tasks]
+
+    def reset(self):
+        outs = [e.reset(t, max_steps_override=10 ** 6, append_state_block=False, loop_detection=False)
+                for e, t in zip(self.envs, self.tasks)]
+        return [o for o, _ in outs], [i for _, i in outs]
+
+    def step(self, actions):
+        import numpy as np
+        outs = [e.step(a) for e, a in zip(self.envs, actions)]
+        return ([o[0] for o in outs], np.array([o[1] for o in outs], dtype=np.float32),
+                np.array([o[2] for o in outs], dtype=bool), [o[3] for o in outs])
+
+    def close(self):
+        pass
+
+
+def _recursive_config(args, trace_dir):
+    """给编排器/适配器的最小配置(它们只读 config.env.*),字段含义与训练 yaml 的 env 段一致。"""
+    from types import SimpleNamespace
+    env = SimpleNamespace(max_steps=args.max_steps, history_length=args.history_length,
+                          rao={"per_agent_max_steps": args.per_agent_steps, "max_depth": args.max_depth,
+                               "state_block_scope": "node", "trace_dir": trace_dir})
+    env.get = lambda k, d=None: getattr(env, k, d)
+    return SimpleNamespace(env=env)
+
+
+def run_recursive_eval(args, tasks, tok, generate, db, out_cases, results, t_start):
+    """递归评测主循环。generate(prompts) -> [(text, n_in, n_out)],便于测试用假策略替换 vLLM。"""
+    from agent_system.environments.env_package.textcraft_synth.recursive_adapter import (
+        TextCraftSynthRecursiveAdapter)
+    from agent_system.recursive.orchestrator import RecursiveEnvironmentManager
+    from agent_system.recursive.protocol import CLOSE_STUCK
+
+    trace_dir = None if (args.trace_dir or "").lower() == "none" else (args.trace_dir or args.out + "_tree_trace")
+    cfg = _recursive_config(args, trace_dir)
+    adapter = TextCraftSynthRecursiveAdapter(cfg)
+    print(f"[eval/recursive] per_agent_steps={args.per_agent_steps} max_depth={args.max_depth} "
+          f"global_rounds_cap={args.max_steps} trace_dir={trace_dir}", flush=True)
+
+    envs = LocalSynthEnvs([], db)
+    mgr = RecursiveEnvironmentManager(envs, textcraft_synth_projection, cfg, adapter=adapter, trace_tag="eval")
+    for b0 in range(0, len(tasks), args.batch_size):
+        batch = tasks[b0:b0 + args.batch_size]
+        n = len(batch)
+        envs.set_tasks(batch)
+        obs, infos = mgr.reset()
+        states = [{"task": t, "gt_plan": infos[i].get("extra.gt_plan", ""), "reward": 0.0, "turns": 0,
+                   "traj": [], "input_tokens": 0, "output_tokens": 0, "tokens_by_depth": {}}
+                  for i, t in enumerate(batch)]
+
+        for rnd in range(args.max_steps):                       # 全局轮数上限(lockstep 必需,官方无)
+            live = [i for i in range(n) if not mgr.episode_done[i]]
+            if not live:
+                break
+            prompts = [tok.apply_chat_template([{"role": "user", "content": obs["text"][i]}],
+                                               tokenize=False, add_generation_prompt=True) for i in live]
+            gen = generate(prompts)
+            text_actions = [""] * n
+            for k, i in enumerate(live):
+                text_actions[i] = gen[k][0]
+            obs, rewards, dones, infos = mgr.step(text_actions)
+            meta = mgr.turn_meta[-1]
+            for k, i in enumerate(live):
+                s = states[i]
+                _, n_in, n_out = gen[k]
+                s["input_tokens"] += n_in; s["output_tokens"] += n_out; s["turns"] += 1
+                d = int(meta[i]["node_depth"])
+                bd = s["tokens_by_depth"].setdefault(str(d), [0, 0]); bd[0] += n_in; bd[1] += n_out
+                s["reward"] = max(s["reward"], float(rewards[i]))
+                if args.save_traj:
+                    s["traj"].append({"round": rnd + 1, "node_uid": meta[i]["node_uid"], "depth": d,
+                                      "is_delegation": bool(meta[i]["is_delegation_turn"]),
+                                      "input_tokens": n_in, "output_tokens": n_out})
+
+        records = mgr.collect_node_records()                    # 强制收摊未完成的树,并关 trace 文件
+        for i, s in enumerate(states):
+            recs = records[i]
+            roots = [r for r in recs if r.depth == 0]
+            subs = [r for r in recs if r.depth > 0]
+            s["reward"] = 1.0 if (roots and roots[0].success >= 1.0) else 0.0
+            s["tree"] = {
+                "n_nodes": len(recs), "max_depth": max((r.depth for r in recs), default=0),
+                "delegated": bool(subs), "n_subagents": len(subs),
+                "subagent_success": (sum(r.success for r in subs) / len(subs)) if subs else None,
+                "n_preexisting": sum(1 for r in subs if r.preexisting),
+                "n_stuck": sum(1 for r in recs if r.close_reason == CLOSE_STUCK),
+                "root_turns": roots[0].turns if roots else 0,
+                "sub_turns": sum(r.turns for r in subs),
+                "root_close_reason": roots[0].close_reason if roots else None,
+                "nodes": [{"uid": r.uid, "parent": r.parent_uid, "depth": r.depth, "goal": r.goal_text,
+                           "success": r.success, "reason": r.close_reason, "turns": r.turns,
+                           "preexisting": r.preexisting} for r in recs],
+            }
+            flush_case(out_cases, results, s, args.save_traj)
+        out_cases.flush()
+        acc = sum(r["success"] for r in results) / max(len(results), 1)
+        print(f"[eval/recursive] {b0 + n}/{len(tasks)} 题完成, 当前总体成功率 {acc:.3f}, "
+              f"已用 {(time.time() - t_start) / 60:.1f} 分钟", flush=True)
+        write_metrics(args, results, t_start)
 
 
 def flush_case(out_cases, results, s, save_traj=True):
@@ -238,9 +387,43 @@ def flush_case(out_cases, results, s, save_traj=True):
         "total_tokens": int(s.get("input_tokens", 0)) + int(s.get("output_tokens", 0)),
         "trajectory": s["traj"] if save_traj else None,
     }
+    if "tree" in s:                                   # 递归分支:树统计 + 按深度的 token
+        rec["tree"] = s["tree"]
+        rec["tokens_by_depth"] = s.get("tokens_by_depth", {})
     out_cases.write(json.dumps(rec, ensure_ascii=False) + "\n")
     out_cases.flush()
-    results.append({k: rec[k] for k in RESULT_KEYS})
+    row = {k: rec[k] for k in RESULT_KEYS}
+    if "tree" in s:
+        row.update({k: s["tree"].get(k) for k in TREE_KEYS})
+    results.append(row)
+
+
+def _tree_stats(rs):
+    """递归分支的树统计汇总。对照官方 inference/workflow.py:66-142 的 report:
+    steps total / root / sub、按深度计数;另加 delegating_rate / preexisting / stuck(我们的诊断量)。"""
+    rs = [r for r in rs if r.get("n_nodes") is not None]
+    if not rs:
+        return None
+    n = len(rs)
+    deleg = [r for r in rs if r.get("delegated")]
+    sub_rates = [r["subagent_success"] for r in rs if r.get("subagent_success") is not None]
+    n_sub = sum(r.get("n_subagents", 0) for r in rs)
+    from collections import Counter
+    return {
+        "n": n,
+        "mean_nodes": sum(r["n_nodes"] for r in rs) / n,
+        "delegating_rate": len(deleg) / n,
+        "success_rate_delegating": (sum(r["success"] for r in deleg) / len(deleg)) if deleg else None,
+        "success_rate_not_delegating": (sum(r["success"] for r in rs if not r.get("delegated"))
+                                        / max(n - len(deleg), 1)) if n > len(deleg) else None,
+        "max_depth_distribution": dict(sorted(Counter(r["max_depth"] for r in rs).items())),
+        "subagent_success_rate": (sum(sub_rates) / len(sub_rates)) if sub_rates else None,
+        "n_subagents_total": n_sub,
+        "preexisting_delegation_rate": (sum(r.get("n_preexisting", 0) for r in rs) / n_sub) if n_sub else None,
+        "stuck_nodes_total": sum(r.get("n_stuck", 0) for r in rs),
+        "mean_steps_root": sum(r.get("root_turns", 0) for r in rs) / n,
+        "mean_steps_subtrajectories": sum(r.get("sub_turns", 0) for r in rs) / n,
+    }
 
 
 def _token_stats(rs):
@@ -292,6 +475,13 @@ def write_metrics(args, results, t_start, final=False):
             "on_success": _token_stats([r for r in results if r["success"]]),
             "on_failure": _token_stats([r for r in results if not r["success"]]),
         },
+        # 递归分支才有(flat 题无 tree 键 → None)
+        "tree": _tree_stats(results),
+        "tree_per_difficulty": {d: _tree_stats([r for r in results if r["difficulty"] == d])
+                                for d in sorted(by_diff)} if _tree_stats(results) else None,
+        "recursive": bool(getattr(args, "recursive", False)),
+        "per_agent_steps": getattr(args, "per_agent_steps", None) if getattr(args, "recursive", False) else None,
+        "max_depth": getattr(args, "max_depth", None) if getattr(args, "recursive", False) else None,
         "wallclock_minutes": (time.time() - t_start) / 60,
         "cases_file": os.path.basename(args.out + "_cases.jsonl"),
     }

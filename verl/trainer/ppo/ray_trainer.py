@@ -96,6 +96,8 @@ class AdvantageEstimator(str, Enum):
     RLOO = "rloo"
     GRPO_PASSK = "grpo_passk"
     GiGPO = 'gigpo'
+    RAO = 'rao'      # Recursive Agent Optimization (arXiv:2605.06639),数学在 rao_core.py
+    RSO = 'rso'      # 我们的方法:A_out + α·A_prog(Φ 进展),数学在 rso_core.py
 
 
 @dataclass
@@ -344,6 +346,67 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
+    elif adv_estimator == AdvantageEstimator.RSO:
+        # [RSO 2026-09-06] 我们的方法(设计出处 Ideation/ideas/ 三份 md)。
+        # 行级字段:节点 6 字段由 RecursiveTrajectoryCollector 回填(与 RAO 同一条路),
+        # 另加 delta_phi / phi_frozen 两列(适配器算 Φ → turn_meta 捎带 → 收集器回填)。
+        from verl.trainer.ppo import rso_core
+        ntb = data.non_tensor_batch
+        rso_stats: Dict[str, float] = {}
+        advantages, returns = rso_core.compute_rso_outcome_advantage(
+            response_mask=data.batch['response_mask'],
+            index=ntb['uid'],
+            traj_index=ntb['traj_uid'],
+            node_uid=ntb['node_uid'],
+            node_depth=ntb['node_depth'],
+            node_success=ntb['node_success'],
+            root_node_uid=ntb['root_node_uid'],
+            delta_phi=ntb['delta_phi'],
+            phi_frozen=ntb['phi_frozen'],
+            is_action_valid=ntb.get('is_action_valid'),
+            progress_coef=kwargs.get('rso_progress_coef', 0.1),
+            progress_clip=kwargs.get('rso_progress_clip', 3.0),
+            progress_baseline_loo=kwargs.get('rso_progress_baseline_loo', True),
+            invalid_coef=kwargs.get('rso_invalid_coef', 0.1),
+            invalid_gate_min_valid_ratio=kwargs.get('rso_invalid_gate', 0.0),
+            stats=rso_stats,
+        )
+        data.batch['advantages'] = advantages
+        data.batch['returns'] = returns
+        if rso_stats:
+            data.meta_info['rso_stats'] = rso_stats
+    elif adv_estimator == AdvantageEstimator.RAO:
+        # [RAO 移植 2026-08-24] 纯增量分支,不选 rao 不进。节点级字段由 RecursiveTrajectoryCollector
+        # 在 gather_rollout_data 之前回填到每行。不读 token_level_rewards(奖励来自节点记录)。
+        # [2026-08-30] 无效动作惩罚改成在这里生效:flat 是把 -0.1 减在 token_level_scores 上,
+        # 那条路对 RAO 是死路(RAO 不读它),所以改成把同样的 -0.1 直接减在这一行的优势上,
+        # 系数仍然读 flat 的同一个配置项。起因见 docs/RAO_PORT_DESIGN.md "步骤 7 执行记录":
+        # 512 token 的生成上限会把回答从 <thought> 中间截断,截断的回合发不出动作却不受任何
+        # 惩罚,于是废话被反复强化,第 29 步 90% 的回合发不出动作,训练崩掉。
+        from verl.trainer.ppo import rao_core
+        ntb = data.non_tensor_batch
+        rao_stats: Dict[str, float] = {}
+        advantages, returns = rao_core.compute_rao_outcome_advantage(
+            response_mask=data.batch['response_mask'],
+            index=ntb['uid'],
+            traj_index=ntb['traj_uid'],
+            node_uid=ntb['node_uid'],
+            node_depth=ntb['node_depth'],
+            node_success=ntb['node_success'],
+            node_children_success_mean=ntb['node_children_success_mean'],
+            node_has_children=ntb['node_has_children'],
+            root_node_uid=ntb['root_node_uid'],
+            lam=kwargs.get('rao_lam', 0.0),
+            leave_one_out=kwargs.get('rao_leave_one_out', True),
+            depth_level_weighting=kwargs.get('rao_depth_level_weighting', True),
+            is_action_valid=data.non_tensor_batch.get('is_action_valid'),
+            invalid_action_penalty_coef=kwargs.get('rao_invalid_action_penalty_coef', 0.0),
+            invalid_penalty_depth_weighted=kwargs.get('rao_invalid_penalty_depth_weighted', False),
+            stats=rao_stats,
+        )
+        data.batch['advantages'] = advantages
+        data.batch['returns'] = returns
+        data.meta_info['rao_stats'] = rao_stats      # fit() 里并入 metrics 打点
     elif adv_estimator == AdvantageEstimator.GiGPO:
         advantages, returns = core_gigpo.compute_gigpo_outcome_advantage(
             token_level_rewards=data.batch['token_level_rewards'], # for episode group reward computing
@@ -453,7 +516,9 @@ class RayPPOTrainer:
             AdvantageEstimator.REMAX,
             AdvantageEstimator.RLOO,
             AdvantageEstimator.REINFORCE_PLUS_PLUS_BASELINE,
-            AdvantageEstimator.GiGPO
+            AdvantageEstimator.GiGPO,
+            AdvantageEstimator.RAO,
+            AdvantageEstimator.RSO,
         ]:
             self.use_critic = False
         else:
@@ -1235,7 +1300,25 @@ class RayPPOTrainer:
                             gigpo_mode=self.config.algorithm.gigpo.mode,
                             gigpo_enable_similarity= self.config.algorithm.gigpo.enable_similarity,
                             gigpo_similarity_thresh=self.config.algorithm.gigpo.similarity_thresh,
+                            # [RAO] algorithm.rao 子树可缺省(非 rao 时用不到)
+                            rao_lam=float((self.config.algorithm.get('rao', None) or {}).get('lam', 0.0)),
+                            rao_leave_one_out=bool((self.config.algorithm.get('rao', None) or {}).get('leave_one_out_baseline', True)),
+                            rao_depth_level_weighting=bool((self.config.algorithm.get('rao', None) or {}).get('depth_level_weighting', True)),
+                            rao_invalid_action_penalty_coef=(
+                                float(self.config.actor_rollout_ref.actor.get('invalid_action_penalty_coef', 0.0))
+                                if self.config.actor_rollout_ref.actor.get('use_invalid_action_penalty', False) else 0.0),
+                            rao_invalid_penalty_depth_weighted=bool((self.config.algorithm.get('rao', None) or {}).get('invalid_penalty_depth_weighted', False)),
+                            # [RSO] algorithm.rso 子树可缺省(非 rso 时用不到)
+                            rso_progress_coef=float((self.config.algorithm.get('rso', None) or {}).get('progress_coef', 0.1)),
+                            rso_progress_clip=float((self.config.algorithm.get('rso', None) or {}).get('progress_clip', 3.0)),
+                            rso_progress_baseline_loo=bool((self.config.algorithm.get('rso', None) or {}).get('progress_baseline_loo', True)),
+                            rso_invalid_coef=float((self.config.algorithm.get('rso', None) or {}).get('invalid_coef', 0.1)),
+                            rso_invalid_gate=float((self.config.algorithm.get('rso', None) or {}).get('invalid_gate_min_valid_ratio', 0.0)),
                         )
+                        if 'rao_stats' in batch.meta_info:          # RAO 诊断量进日志
+                            metrics.update(batch.meta_info.pop('rao_stats'))
+                        if 'rso_stats' in batch.meta_info:          # RSO 诊断量进日志
+                            metrics.update(batch.meta_info.pop('rso_stats'))
 
                     # update critic
                     if self.use_critic:

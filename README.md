@@ -161,6 +161,35 @@ python scripts_rso/eval_full_val.py \
 - 请同时对**未训练的基座模型**跑一次,作为 before/after 对比的起点;
 - 调试时可用 `--limit 20 --difficulties easy medium` 快速试跑。
 
+## 四点七、递归方法:RAO 与 RSO(2026-09-08 新增)
+
+新增两条**递归 agent** 实验(agent 可 `delegate:` 生成子 agent)。flat 三条原样未动。
+
+| # | 方法 | 8 卡脚本 |
+|---|---|---|
+| 4 | RAO(arXiv:2605.06639) | `examples/rso_8gpu/run_synth_rao_8gpu.sh` |
+| 5 | RSO | `examples/rso_8gpu/run_synth_rso_8gpu.sh` |
+
+```bash
+# 训练:用法与 flat 脚本一致(MODEL / TP / MICRO_BSZ / OUT)。MICRO_BSZ 用 1。
+MODEL=Qwen/Qwen3.5-4B TP=2 MICRO_BSZ=1 OUT=$HOME/rso_runs/q35_4b_rso   bash examples/rso_8gpu/run_synth_rso_8gpu.sh
+# 评测:与 flat 同一个脚本,加 --recursive
+python scripts_rso/eval_full_val.py   --model <ckpt>/actor/huggingface --out <dir>/eval_full   --recursive --per-agent-steps 25 --max-depth 6 --max-steps 200 --tp 2
+```
+
+注意:
+- 脚本里的算法与底座参数(熵/KL/响应长度/惩罚/env.rao.*)**已配好,请勿改动**;
+  可调的只有 MODEL / TP / MICRO_BSZ / OUT(与 flat 相同)。
+- 可选 `TRACE=1` 会把每棵树的完整轨迹落盘到 `$OUT/tree_trace/`(约 0.5GB/步,默认关)。
+- 训练曲线看 `rao/*` 或 `rso/*` 前缀;成功率看 `rao/root_reward_mean`(或 `rso/`)。
+- 测试(不需要 GPU):`PYTHONPATH=$PWD python tests/test_rso_core.py` 等,tests/ 下共 9 个。
+
+**Gemma(`google/gemma-4-E4B-it`)版本要求(2026-09-08 实测)**:
+本仓库 pin 的 transformers 4.51.1 / vllm 0.8.5 **跑不了它**(tokenizer 都加载不了)。
+请为 Gemma 单独建环境:transformers ≥ 5.x(5.16.1 实测可用)+ 支持 gemma-4 的近期 vllm。
+Qwen 系用本仓库原 pin 即可,两套环境别混。Gemma 词表 262k,`MICRO_BSZ=1` 起步。
+提示词与 chat template 已验证兼容,无需改动。
+
 ## 五、结果在哪里看
 
 ```
@@ -244,6 +273,12 @@ hard/extreme 接近 0 是预期内的(失败绝大多数死于循环检测而非
    文本动作语法,务必测试模型的各种自然写法,否则"格式死"会伪装成"能力不行"。
 
 ---
+
+**递归两条(RAO/RSO)专属:**
+
+- 脚本里的底座参数是成套的,**请勿单独改动任何一项**(改了会训崩,我们验证过)。
+- 内存紧(验证阶段 OOM/节点被杀)就把 `data.val_batch_size` 调到 50,结果口径不变。
+- 成功率看 `rao/root_reward_mean`(或 `rso/`),不要看 `critic/score/mean`。
 
 ## 八、代码地图(改了什么)
 

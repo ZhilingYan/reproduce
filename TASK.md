@@ -51,6 +51,18 @@ easy(2-3 层)/ medium(4-6)/ hard(7-9)/ extreme(10-12)。
 
 ---
 
+### 三点五、递归两条(可选,2026-09-08 新增)
+
+若时间与额度允许,在三条 flat 之后再跑两条递归(优先 RSO):
+
+| # | 方法 | 脚本 | 
+|---|---|---|
+| 4 | RAO | `examples/rso_8gpu/run_synth_rao_8gpu.sh` | 
+| 5 | RSO | `examples/rso_8gpu/run_synth_rso_8gpu.sh` | 
+
+用法、底座差异与健康指标见 README 第四点七节。**MICRO_BSZ 用 1**(响应 1024)。
+评测:同一个 `eval_full_val.py`,加 `--recursive --per-agent-steps 25 --max-depth 6 --max-steps 200`。
+
 ## 四、成本预期(重要,请先读)
 
 我们在 4×A100-40G 上实测过:**episode 步数上限直接决定成本**,因为框架是
@@ -70,6 +82,9 @@ lockstep(每轮所有环境一起生成一次)。
 1. `env.max_steps`(默认 100):最有效,同时压缩 rollout 轮数与训练行数;
 2. `MICRO_BSZ`(默认 2):影响 actor 更新耗时,显存够就调大到 4;
 3. `data.train_batch_size`(默认 16):减半则每步数据减半,但梯度更噪。
+
+**递归两条(#4/#5)的成本**:4×A100-40G 实测每训练步 65-100 分钟,50 步约 270 GPU·小时/条;
+8 卡下先跑 3-5 步看 `timing_s/step` 再估总账。`env.max_steps=200` 请保持默认。
 
 ---
 
@@ -132,6 +147,14 @@ python scripts_rso/eval_full_val.py \
 总体 0.29-0.32 / easy 0.76-0.80 / **medium 0.40-0.48** / hard 与 extreme 0.00。
 hard/extreme 为 0 是**预期内的**(平铺方法的结构性上限,正是留给递归方法的空间)。
 
+**递归两条(#4/#5)另加三条判据**(前缀 `rao/*` 或 `rso/*`):
+
+| 指标 | 期望 |
+|---|---|
+| `rso/delegating_trees` | > 0(通常 40-60/64;为 0 先去 rollouts 看模型实际输出) |
+| `rso/valid_action_ratio` | > 0.9 且不持续下滑 |
+| `actor/entropy_loss` | 不单调上行 |
+
 ---
 
 ## 七、交付物
@@ -153,6 +176,8 @@ hard/extreme 为 0 是**预期内的**(平铺方法的结构性上限,正是留�
 **不要因为没跑满就不交** —— 部分曲线也有价值。
 
 ---
+
+- (仅递归,可选)若开了 `TRACE=1`:打包最后 1-2 个训练步的 `tree_trace/reset_*.jsonl`。
 
 ## 八、常见问题
 

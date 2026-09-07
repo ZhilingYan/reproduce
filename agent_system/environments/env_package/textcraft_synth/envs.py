@@ -28,6 +28,11 @@ class TextCraftSynthWorker:
             "train_difficulties" if is_train else "val_difficulties")
         self._tasks = load_tasks(split, difficulties)
         self._max_steps = int(env_kwargs.get("max_steps", 75))
+        # 2026-08-24 为 RAO 递归加:递归模式传 False,状态块改由适配器按节点维护
+        # (原因见 synth_core.reset 的注释)。缺省 True = flat 原行为。
+        self._append_state_block = bool(env_kwargs.get("append_state_block", True))
+        # 递归模式传 False:槽级循环检测会把整棵树杀掉,改由适配器按节点检测(synth_core.step 注释)
+        self._loop_detection = bool(env_kwargs.get("loop_detection", True))
         self._env = SynthTextCraftEnv(get_shared_recipe_db())
 
     def pool_size(self):
@@ -35,7 +40,9 @@ class TextCraftSynthWorker:
 
     def reset(self, task_index: int):
         task = self._tasks[task_index % len(self._tasks)]
-        obs, info = self._env.reset(task, max_steps_override=self._max_steps)
+        obs, info = self._env.reset(task, max_steps_override=self._max_steps,
+                                    append_state_block=self._append_state_block,
+                                    loop_detection=self._loop_detection)
         return obs, info
 
     def step(self, action: str):
