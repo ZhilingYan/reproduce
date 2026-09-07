@@ -1,202 +1,86 @@
-# TASK — 要做什么、怎么判断做完了
+# TASK — TextCraft-Synth 实验任务书
 
-给合作者的任务说明书。README.md 讲"怎么装、怎么跑",本文讲"跑什么、为什么、
-交付什么"。
-
----
-
-## 一、一句话任务
-
-在 TextCraft-Synth 环境上,用 **Qwen3.5-4B** 与 **Qwen3.5-9B** 两个模型,各跑
-**三条 baseline**(纯 GRPO / GRPO+OPSD-GT / SDAR-skill)的 150 步强化学习训练,
-训练完成后在**全量 632 道验证题**上做推理评测,交回指标与每题完整轨迹。
+维护记录:
+- 2026-08-24 首版:三条 flat baseline(GRPO / GT-OPSD / SDAR-skill),Qwen3-4B。
+- 2026-09-07 收到三条 baseline 的训练与评测结果(评测为旧口径 max_steps=200 / temperature=0.4)。训练部分完成 ✅。
+- 2026-09-08 新增需求 1(旧 ckpt 重评测)与需求 2(RAO / RSO 两条新方法);仓库已推送对应代码(commit 7fe7334)。
 
 ---
 
-## 二、背景(为什么做这件事)
+## 需求清单
 
-我们在研究"递归式 agent + 自蒸馏"。递归方法要证明有效,必须先有一组**扎实的
-平铺(flat)基线**做参照:同样的环境、同样的数据、同样的训练预算下,不用递归
-能做到什么程度。这三条 baseline 就是那个参照系:
-
-| baseline | 特点 | 在对比中的角色 |
+| # | 内容 | 状态 |
 |---|---|---|
-| 纯 GRPO | 只用环境奖励做策略梯度 | 最朴素的 RL 下限 |
-| GRPO + OPSD(GT) | 训练时给 teacher 看本题标准答案做自蒸馏 | "有特权信息能好多少"的上限参照 |
-| SDAR + skill | 训练时给 teacher 看通用攻略做自蒸馏 | 介于两者之间的实用方案 |
-
-三者**除算法开关外所有参数完全一致**,所以曲线可以直接同图比较。
-
-TextCraft-Synth 是合成的多步合成(crafting)任务:给定一批原料和一个目标物品,
-agent 要自己查配方、规划合成链、按正确的数量顺序执行。难度 = 合成树深度,
-easy(2-3 层)/ medium(4-6)/ hard(7-9)/ extreme(10-12)。
+| 0 | 三条 flat baseline 训练 150 步(Qwen3-4B) | ✅ 完成(2026-09-07) |
+| **1** | **用已训好的三个 ckpt(grpo / gtopsd / skill,step150)+ 未训练基座,重跑全量 val 评测,新口径 max_steps=2000 / temperature=0(脚本默认,不传参即是);产出精简结果文件并打包** | ⬜ 待做 |
+| **2** | **两条新方法 RAO、RSO:Qwen3-4B 各训练 150 步;训完后同样跑新口径全量 val;产出精简结果文件并打包** | ⬜ 待做 |
 
 ---
 
-## 三、要跑的实验矩阵
+## 需求 1:旧 ckpt 重评测(先做,不占训练卡)
 
-**2 个模型 × 3 条 baseline = 6 个训练任务**,外加每个训练完成后的 1 次全量评测。
-
-| # | 模型 | baseline | 脚本 |
-|---|---|---|---|
-| 1 | Qwen/Qwen3.5-4B | GRPO | `examples/rso_8gpu/run_synth_grpo_8gpu.sh` |
-| 2 | Qwen/Qwen3.5-4B | GRPO+OPSD-GT | `examples/rso_8gpu/run_synth_gtopsd_8gpu.sh` |
-| 3 | Qwen/Qwen3.5-4B | SDAR+skill | `examples/rso_8gpu/run_synth_skill_8gpu.sh` |
-| 4 | Qwen/Qwen3.5-9B | GRPO | 同上,`MODEL` 换成 9B |
-| 5 | Qwen/Qwen3.5-9B | GRPO+OPSD-GT | 同上 |
-| 6 | Qwen/Qwen3.5-9B | SDAR+skill | 同上 |
-
-如果算力有限,**优先级顺序**是:先把 4B 的三条跑完(1→2→3),再上 9B。
-单模型内部三条同等重要,不要只跑一条。
-
----
-
-### 三点五、递归两条(可选,2026-09-08 新增)
-
-若时间与额度允许,在三条 flat 之后再跑两条递归(优先 RSO):
-
-| # | 方法 | 脚本 | 
-|---|---|---|
-| 4 | RAO | `examples/rso_8gpu/run_synth_rao_8gpu.sh` | 
-| 5 | RSO | `examples/rso_8gpu/run_synth_rso_8gpu.sh` | 
-
-用法、底座差异与健康指标见 README 第四点七节。**MICRO_BSZ 用 1**(响应 1024)。
-评测:同一个 `eval_full_val.py`,加 `--recursive --per-agent-steps 25 --max-depth 6 --max-steps 200`。
-
-## 四、成本预期(重要,请先读)
-
-我们在 4×A100-40G 上实测过:**episode 步数上限直接决定成本**,因为框架是
-lockstep(每轮所有环境一起生成一次)。
-
-| env.max_steps | episode 平均长度 | 每训练步的数据量 | 每训练步耗时(4×A100-40G) |
-|---|---|---|---|
-| 50 | ~21 轮 | ~250 万 token | ~15 分钟 |
-| **200** | ~112 轮 | ~4660 万 token | **~2.8 小时** |
-
-200 步预算下 150 训练步 ≈ 420 小时/条,我们的配额撑不住,所以**脚本默认
-`env.max_steps=100`**(折中:medium 的成功案例实测用 55-96 轮,100 覆盖得住)。
-
-你们 8 卡应该比我们 4 卡快,但请**先跑 3-5 步看实测 `timing_s/step`**
-(在 tensorboard 里),据此估算总时长再决定是否调整。可调的旋钮按性价比排序:
-
-1. `env.max_steps`(默认 100):最有效,同时压缩 rollout 轮数与训练行数;
-2. `MICRO_BSZ`(默认 2):影响 actor 更新耗时,显存够就调大到 4;
-3. `data.train_batch_size`(默认 16):减半则每步数据减半,但梯度更噪。
-
-**递归两条(#4/#5)的成本**:4×A100-40G 实测每训练步 65-100 分钟,50 步约 270 GPU·小时/条;
-8 卡下先跑 3-5 步看 `timing_s/step` 再估总账。`env.max_steps=200` 请保持默认。
-
----
-
-## 五、执行步骤
-
-### 步骤 1:环境与数据(一次性)
+先 `git pull`(需要 commit 7fe7334 之后的 `eval_full_val.py`)。对四个模型各跑一次:
 
 ```bash
-git clone <repo> && cd <repo>
-conda create -n rso python=3.11 -y && conda activate rso
+# 三个 ckpt + 基座,共 4 次;不传 --max-steps/--temperature,默认即 2000/贪心
+python scripts_rso/eval_full_val.py \
+  --model <ckpt>/global_step_150/actor/huggingface \
+  --out   <dir>/eval2k_<name> --split val --tp 2
+python scripts_rso/eval_full_val.py \
+  --model Qwen/Qwen3-4B-Instruct-2507 \
+  --out   <dir>/eval2k_before --split val --tp 2
+```
+
+支持断点续跑:同一 `--out` 重复执行会跳过已完成的题。
+
+## 需求 2:RAO 与 RSO(训练 + 评测)
+
+```bash
+# 训练(8 卡;两条各一次;MICRO_BSZ 用 1)
+MODEL=Qwen/Qwen3-4B-Instruct-2507 TP=2 MICRO_BSZ=1 OUT=$HOME/rso_runs/q3_4b_rao \
+  bash examples/rso_8gpu/run_synth_rao_8gpu.sh
+MODEL=Qwen/Qwen3-4B-Instruct-2507 TP=2 MICRO_BSZ=1 OUT=$HOME/rso_runs/q3_4b_rso \
+  bash examples/rso_8gpu/run_synth_rso_8gpu.sh
+# 脚本内的算法与底座参数已配好,除 MODEL/TP/MICRO_BSZ/OUT 外请勿改动。
+
+# 训完后全量 val(注意递归要加 --recursive 及其参数)
+python scripts_rso/eval_full_val.py \
+  --model <ckpt>/global_step_150/actor/huggingface \
+  --out   <dir>/eval2k_rao --split val \
+  --recursive --per-agent-steps 25 --max-depth 6 --max-steps 200 --tp 2
+```
+
+训练期健康检查(tensorboard,前 5 步内确认):
+`rso/delegating_trees > 0`;`rso/valid_action_ratio > 0.9` 且不持续下滑;`actor/entropy_loss` 不单调上行。
+(`rao/` 前缀同理。)成功率曲线看 `rao/root_reward_mean` 或 `rso/root_reward_mean`。
+
+---
+
+## 精简结果文件规范(两个需求共用)
+
+评测产物 `*_cases.jsonl` 很大(含逐轮 trajectory)。请按 2026-09-07 那批的同款格式制作摘要:
+每个模型一对 `{name}_summary.jsonl` + `{name}_summary.csv`,632 行,每题一行,字段固定为:
+
+```
+task_id, difficulty, success, reward, turns_used, gold_plan_len, max_depth,
+fail_reason, n_turns_recorded, last_action, input_tokens, output_tokens, total_tokens
+```
+
+- `fail_reason`:"" = 成功;loop_detected;cap_hit(耗尽步数预算)。
+- 递归两条(RAO/RSO)另附每题的 tree 字段(cases 文件里已有,原样带上即可):
+  `n_nodes, max_depth, delegated, n_subagents, subagent_success, root_turns, sub_turns`。
+- 附一份 README.txt:写明评测口径(max_steps / temperature / split)与成功率汇总表(overall / 分难度)。
+- 全部打包为一个 tar.gz。命名:
+  - 需求 1:`flat3baseline_qwen3_4b_textcraft_eval2k_summaries.tar.gz`
+  - 需求 2:`raorso_qwen3_4b_textcraft_eval2k_summaries.tar.gz`
+- 同时保留 `*_metrics.json` 原样入包(脚本自动生成,不用改)。
+
+---
+
+## 环境与数据(与首版相同,已配好的可跳过)
+
+```bash
 pip install -r requirements_rso.txt
 python scripts_rso/prepare_synth_parquet.py --out ~/data/verl-agent/synth_full/text
 ```
-
-任务数据已在仓库里(632+2522 题),**不需要下载**。只有模型权重会自动从
-HuggingFace 拉取。
-
-### 步骤 2:训练(每条 baseline 一次)
-
-```bash
-MODEL=Qwen/Qwen3.5-4B OUT=$HOME/rso_runs/qwen35_4b_grpo TP=2 MICRO_BSZ=2 \
-  bash examples/rso_8gpu/run_synth_grpo_8gpu.sh
-```
-
-9B 建议 `TP=4`,并先用 `MICRO_BSZ=1` 试跑几步确认不 OOM。
-
-**跑之前请先跑 3-5 步做健康检查**(见第六节的判据),确认没问题再让它跑满 150 步。
-
-### 步骤 3:全量验证集评测(训练完成后)
-
-```bash
-python scripts_rso/eval_full_val.py \
-  --model $HOME/rso_runs/qwen35_4b_grpo/ckpts/global_step_150/actor/huggingface \
-  --out   $HOME/rso_runs/qwen35_4b_grpo/eval_full \
-  --split val --tp 2
-```
-
-注意:
-- `--split val` 是**全量 632 题**(训练中途的验证用的是 100 题子集,不能替代);
-- 评测口径由脚本默认值给出:`max_steps=2000`、`temperature=0`(贪心解码,与 RAO 官方
-  推理协议一致),无需显式传参。深题 gold 最多 209 步,2000 步确保失败反映能力而非预算;
-- 9B 用 `--tp 4`;
-- 也请对**未训练的基座模型**跑一次同样的评测作为"训练前基线"
-  (`--model Qwen/Qwen3.5-4B`),这样才有 before/after 的对比。
-
----
-
-## 六、健康检查判据(跑满之前先看这几个数)
-
-在 tensorboard 里看前几步,四条都满足才值得继续跑:
-
-| 指标 | 期望 | 不满足意味着 |
-|---|---|---|
-| `val/medium_success_rate`(step 0) | **> 0.2** | 环境或 prompt 有问题——medium 若为 0,后面 150 步也学不动 |
-| `critic/advantages/max` | **> 0**(通常 1 左右) | 组内奖励零方差,GRPO 没有梯度 |
-| `episode/valid_action_ratio` | **> 0.95** | 模型输出格式不合规,死在格式而非能力 |
-| 无 OOM、`timing_s/step` 稳定 | — | 见第四节调参 |
-
-我们在 Qwen3-4B-Instruct-2507 上的训练前基线(供对照,你们的模型数值会不同):
-总体 0.29-0.32 / easy 0.76-0.80 / **medium 0.40-0.48** / hard 与 extreme 0.00。
-hard/extreme 为 0 是**预期内的**(平铺方法的结构性上限,正是留给递归方法的空间)。
-
-**递归两条(#4/#5)另加三条判据**(前缀 `rao/*` 或 `rso/*`):
-
-| 指标 | 期望 |
-|---|---|
-| `rso/delegating_trees` | > 0(通常 40-60/64;为 0 先去 rollouts 看模型实际输出) |
-| `rso/valid_action_ratio` | > 0.9 且不持续下滑 |
-| `actor/entropy_loss` | 不单调上行 |
-
----
-
-## 七、交付物
-
-每条 baseline 请交回:
-
-1. **`<OUT>/tensorboard/`** —— 完整训练曲线(最重要,别只截图);
-2. **`<OUT>/eval_full_metrics.json`** —— 全量 632 题的汇总指标
-   (总体 / 分难度 / easy+medium 合并 / 平均轮数);
-3. **`<OUT>/eval_full_cases.jsonl`** —— **每题一行**的完整结果:
-   task_id、难度、gold 计划长度、是否成功、reward、用了多少轮,以及
-   **逐轮完整轨迹**(每轮的完整 prompt、模型原始输出、解析出的动作、
-   环境反馈、reward)。这份是做失败模式分析用的,请务必保留;
-4. **训练日志**(slurm 输出或 console 日志);
-5. 一句话说明实际用的配置(模型、`max_steps`、`MICRO_BSZ`、卡数),
-   以及跑了多久。
-
-如果某条没跑满 150 步(超时、抢占等),把实际跑到的步数和最后的 ckpt 交回即可,
-**不要因为没跑满就不交** —— 部分曲线也有价值。
-
----
-
-- (仅递归,可选)若开了 `TRACE=1`:打包最后 1-2 个训练步的 `tree_trace/reset_*.jsonl`。
-
-## 八、常见问题
-
-**Q: 训练中途的验证(val100)和最后的全量评测(632)是什么关系?**
-A: 前者是训练过程中每 5 步跑一次的监控,用 100 题固定子集(每难度 25 题),
-为了省时间;后者是训练结束后的正式评测,用全量 632 题。两者的题目 id 都是
-固定的,跨模型跨方法可比。
-
-**Q: 为什么训练只用 easy+medium,不用 hard/extreme?**
-A: hard/extreme 的标准解中位就要 88/173 步,在可行预算内必然失败 → 组内奖励
-零方差 → GRPO 拿不到梯度,纯烧算力。它们只保留在**验证集**里作为泛化探针。
-
-**Q: 中途挂了怎么办?**
-A: 脚本每 5 步存一次 ckpt,`resume_mode=auto` 会自动从最近的 ckpt 续跑。
-直接重新提交同一条命令即可。
-
-**Q: 显存不够?**
-A: 按顺序试:`MICRO_BSZ=1` → `TP` 调大 → `data.train_batch_size` 减半。
-前两个不改变实验语义(只是梯度累积粒度和模型切分方式),第三个会改变。
-
-**Q: 三条 baseline 可以并行跑吗?**
-A: 可以,它们完全独立,输出目录不同即可(`OUT` 记得区分模型和方法)。
+问题排查见 README(递归相关:第四点七节与"已知坑")。
