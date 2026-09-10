@@ -103,6 +103,13 @@ class RecursiveTrajectoryCollector(TrajectoryCollector):
                 # [RSO] 第 7/8 列:该行的 ΔΦ 与冻结标记(rso_core 的进展项原料)
                 data["delta_phi"] = float(meta.get("delta_phi", 0.0))
                 data["phi_frozen"] = bool(meta.get("phi_frozen", False))
+                # [OPSD] 第 9/10 列(仅 main_rso_opsd):行开局现算的 priv 与难度桶。
+                # 键只在编排器 _priv_enabled(适配器带 build_priv)时才写进 turn_meta,
+                # 因此阶段 1 RSO/RAO 的批不多任何列,行为不变。同一 OPSD 批里每行都有键,
+                # 不会出现列不齐。
+                if "node_priv" in meta:
+                    data["node_priv"] = str(meta.get("node_priv", "") or "")
+                    data["task_difficulty"] = str(meta.get("task_difficulty", "") or "")
                 rec = rec_by_uid.get(uid)
                 if rec is None:
                     # 陪跑行(槽已结束,uid 为空)在 flat 的 gather 里会被 active_masks 过滤掉;

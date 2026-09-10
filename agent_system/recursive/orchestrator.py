@@ -93,6 +93,16 @@ class RecursiveEnvironmentManager(EnvironmentManagerBase):
         except Exception:
             pass
         self.budget = budget or PerAgentBudget.from_config(rao_cfg)
+        # ---- [OPSD] priv(节点局部特权文本)的"行开局现算"通道(RSO_method_design §2a,
+        # 2026-09-10 定稿)。仅当适配器实现 build_priv 时启用——阶段 1 RSO/RAO 的适配器
+        # 没有该方法,以下所有 priv 逻辑短路,行为与之前逐字节一致。
+        # _acting_priv[i] 缓存"挂在槽 i 当前待执行 prompt 上"的那份 priv:
+        # 在构造该 prompt 的时刻(reset / _render_top)按当时库存与 K_X 现算;
+        # 下一轮 step 时 _advance_slot 把它写进本行 info(先于下一次 _render_top 的覆盖),
+        # 随 turn_meta 以本行 (slot, step_idx) 落表——同键无滞后。
+        self._priv_enabled = callable(getattr(adapter, "build_priv", None))
+        self._acting_priv: List[str] = []
+        self._priv_warned = False
         # prompt 超长守卫(继承自 flat 的 TextCraftSynthEnvironmentManager,tips #12):
         # 超限 = 该 episode 记失败、训练继续,而不是整个 job 崩溃。None 表示关闭守卫。
         self.max_obs_chars: Optional[int] = rao_cfg.get("max_obs_chars", 26000)
@@ -125,6 +135,7 @@ class RecursiveEnvironmentManager(EnvironmentManagerBase):
         self.last_infos = [dict(info) for info in infos]
         self.node_open_round = {}
         self.turn_meta = []
+        self._acting_priv = [""] * n            # [OPSD] 每槽当前 prompt 携带的 priv
         self.tracer.begin_reset()
         # [RSO] 可选钩子:适配器若维护跨局状态(如 Φ 追踪器),在这里清场
         hook = getattr(self.adapter, "on_reset_begin", None)
@@ -141,6 +152,8 @@ class RecursiveEnvironmentManager(EnvironmentManagerBase):
             self.node_open_round[root.uid] = 0
             self.stacks.append([root])
             texts.append(self.adapter.build_observation(root, is_first_turn=True))
+            if self._priv_enabled:               # [OPSD] 首行的 priv:开局状态现算
+                self._acting_priv[i] = self._compute_priv(root, info)
             self._stamp_info(info, root, i, is_delegation_turn=False)
             self.tracer.emit("reset", slot=i, tag=self.tracer.tag,
                              task_id=info.get("extra.task_id"), difficulty=info.get("extra.difficulty"),
@@ -231,7 +244,7 @@ class RecursiveEnvironmentManager(EnvironmentManagerBase):
 
         self.episode_done = np.logical_or(self.episode_done, dones)
         # 本轮每槽的元数据快照(从 infos 里抄,与写进 info 的完全一致),供收集器按位置回填
-        self.turn_meta.append([{
+        meta_rows = [{
             "node_uid": info.get("node_uid", ""),
             "node_depth": int(info.get("node_depth", -1)),
             "root_node_uid": info.get("root_node_uid", ""),
@@ -240,8 +253,27 @@ class RecursiveEnvironmentManager(EnvironmentManagerBase):
             # 语义正确:那些轮环境状态没变)。收集器按位置回填成每行的列。
             "delta_phi": float(info.get("delta_phi", 0.0)),
             "phi_frozen": bool(info.get("phi_frozen", False)),
-        } for info in infos])
+        } for info in infos]
+        if self._priv_enabled:
+            # [OPSD] 只在 priv 启用时多带两键(node_priv / task_difficulty),收集器据键
+            # 有无决定是否回填新列——阶段 1 RSO 的 turn_meta 因此一个键都不多。
+            for m, info in zip(meta_rows, infos):
+                m["node_priv"] = str(info.get("node_priv", "") or "")
+                m["task_difficulty"] = str(info.get("extra.difficulty", "") or "")
+        self.turn_meta.append(meta_rows)
         return {"text": out_text, "image": None, "anchor": list(next_obs)}, rewards, dones, infos
+
+    # ------------------------------------------------------------ [OPSD] priv 现算
+    def _compute_priv(self, node: Node, info: Dict[str, Any]) -> str:
+        """调适配器现算 priv。适配器抛错不允许炸 rollout(记空串,打印一次)——
+        与 parse_delegation 崩溃的 P11 处置同款。"""
+        try:
+            return str(self.adapter.build_priv(node, info) or "")
+        except Exception as e:
+            if not self._priv_warned:
+                self._priv_warned = True
+                print(f"[OPSD orchestrator] build_priv raised {type(e).__name__}: {e}; priv 记空串")
+            return ""
 
     # ------------------------------------------------------------ 单槽推进
     def _advance_slot(self, i: int, node: Node, action: str, env_result: str,
@@ -250,6 +282,10 @@ class RecursiveEnvironmentManager(EnvironmentManagerBase):
                       dones: np.ndarray, out_text: List[str], raw_output: str = "") -> None:
         is_delegation_turn = delegation_result is not None
         self._stamp_info(info, node, i, is_delegation_turn=is_delegation_turn)
+        if self._priv_enabled:
+            # [OPSD] 本行的 priv = 构造本行 prompt 时现算好的那份(_acting_priv 缓存)。
+            # 必须在本轮 _render_top 覆盖缓存【之前】取走,判序才是"行开局"而非"下一行开局"。
+            info["node_priv"] = self._acting_priv[i] if i < len(self._acting_priv) else ""
 
         # ---- 记这一轮。委托那轮也扣预算(trajectory.py:326-329:每个 step 都算,P5 正解)
         if is_delegation_turn:
@@ -344,6 +380,10 @@ class RecursiveEnvironmentManager(EnvironmentManagerBase):
             if self.max_obs_chars is None or len(text) <= self.max_obs_chars:
                 if i < len(self.last_prompt):
                     self.last_prompt[i] = text            # 下一轮 turn 事件记的就是它
+                if self._priv_enabled and i < len(self._acting_priv):
+                    # [OPSD] 行开局现算:这份 priv 属于刚渲染的这个 prompt 对应的【下一行】。
+                    # 弹栈后父恢复的首行也走这里——子树造成的库存变化已在 info 里,现算即最新。
+                    self._acting_priv[i] = self._compute_priv(top, info)
                 return False
             info["prompt_overflow"] = True
             if len(self.stacks[i]) > 1:

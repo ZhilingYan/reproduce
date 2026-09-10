@@ -328,6 +328,12 @@ class DataParallelPPOActor(BasePPOActor):
             select_keys.append("ref_log_prob")
         if self.config.get("use_sdl_loss", False) or self.config.get("use_sdar_loss", False):
             select_keys.append("teacher_log_probs")
+        # [RSO+OPSD] 独立开关(main_rso_opsd 写死 True;其余入口缺省 False,行为不变)。
+        # act_mask 与 teacher_log_probs 同为 (bs, resp_len) 张量列,随 batch 切分同通路到达。
+        if self.config.get("use_rso_opsd_loss", False):
+            for _k in ("teacher_log_probs", "act_mask"):
+                if _k not in select_keys:
+                    select_keys.append(_k)
         batch = data.select(batch_keys=select_keys).batch
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
 
@@ -428,6 +434,10 @@ class DataParallelPPOActor(BasePPOActor):
                         metrics["actor/kl_loss"] = kl_loss.detach().item()
                         metrics["actor/kl_coef"] = self.config.kl_loss_coef
 
+                    # [读码笔记] 下面两个 if 是 SDAR fork 在上游 verl 的 loss 组装末尾
+                    # "加建的两个房间":use_sdl_loss 是 skillsd 方法的,use_sdar_loss 是
+                    # SDAR 方法的(我们跑 main_sdar 时后者=True,前者 False)。
+                    # 跑纯 GRPO(main_ppo)时两个开关都是 False,本文件行为与上游完全一致。
                     if self.config.get("use_sdl_loss", False):
                         from verl.trainer.ppo.skillsd_utils import compute_sdl_loss
                         teacher_log_probs = data["teacher_log_probs"]
@@ -443,6 +453,13 @@ class DataParallelPPOActor(BasePPOActor):
                         metrics["actor/sdl_loss"] = sdl_loss.detach().item()
                         metrics["actor/sdl_coef"] = sdl_coef
 
+                    # [读码笔记] ★SDAR/OPSD 蒸馏损失的接线处(公式本体在 sdar_utils.py)。
+                    # teacher_log_probs 这一列来自 skillsd fit 的 teacher 前向插入;
+                    # gate_beta/sdar_coef 是 main_sdar 用 open_dict 搬进 actor 配置的
+                    # (我们的实验:sdar_coef=0.01;gtopsd 组 gate_beta=0,sdar 组 =5.0)。
+                    # 注意 student 用的是 log_prob——本次 micro-batch 前向、带梯度的那份,
+                    # 不是 old_log_probs。至此三个损失项(PPO比值/KL/蒸馏)都在拉扯同一个
+                    # 带梯度的 log_prob,只是参照物不同(old/ref/teacher)。
                     if self.config.get("use_sdar_loss", False):
                         from verl.trainer.ppo.sdar_utils import compute_sdar_loss
                         teacher_log_probs = data["teacher_log_probs"]
@@ -457,6 +474,27 @@ class DataParallelPPOActor(BasePPOActor):
                         policy_loss = policy_loss + sdar_loss * sdar_coef
                         metrics.update(sdar_metrics)
                         metrics["sdar/coef"] = sdar_coef
+
+                    # [RSO+OPSD] 居中门蒸馏损失(RSO_method_design §2c;公式在 rso_opsd_core.py)。
+                    # 独立开关 + 独立函数,不动 flat 基线在用的 use_sdar_loss / compute_sdar_loss
+                    # (设计 §2a 落地路径 5)。student 用带梯度的本次前向 log_prob(与 sdar 分支同理);
+                    # 掩码 = response_mask × act_mask(蒸馏只作用在 <action> 内容 token,§2b)。
+                    if self.config.get("use_rso_opsd_loss", False):
+                        from verl.trainer.ppo.rso_opsd_core import compute_rso_opsd_loss
+                        teacher_log_probs = data["teacher_log_probs"]
+                        act_mask = data["act_mask"]
+                        rso_opsd_loss, rso_opsd_metrics = compute_rso_opsd_loss(
+                            student_log_probs=log_prob,
+                            teacher_log_probs=teacher_log_probs,
+                            response_mask=response_mask,
+                            act_mask=act_mask,
+                            gate_beta=self.config.get("rso_opsd_gate_beta", 2.5),
+                            loss_agg_mode=loss_agg_mode,
+                        )
+                        rso_opsd_coef = self.config.get("rso_opsd_loss_coef", 0.01)
+                        policy_loss = policy_loss + rso_opsd_loss * rso_opsd_coef
+                        metrics.update(rso_opsd_metrics)
+                        metrics["rso/opsd_coef"] = rso_opsd_coef
 
 
                     if self.config.use_dynamic_bsz:

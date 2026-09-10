@@ -190,6 +190,38 @@ python scripts_rso/eval_full_val.py   --model <ckpt>/actor/huggingface --out <di
 Qwen 系用本仓库原 pin 即可,两套环境别混。Gemma 词表 262k,`MICRO_BSZ=1` 起步。
 提示词与 chat template 已验证兼容,无需改动。
 
+## 四点八、RSO+OPSD:节点局部特权蒸馏(2026-09-10 新增)
+
+在 RSO 之上加一路"开小抄的 teacher":每个训练步,同一份权重再前向一次,prompt 前
+拼上该行**节点自己**的特权工作计划(priv——按当时库存与该节点私有配方笔记本现算的
+剩余闭包清单),蒸馏损失只作用在 `<action>` 内容 token 上,门控为居中门
+g=max(tanh(β·δ),0)(δ=teacher−student 逐 token log 概率差;β=2.5,λ=0.01)。
+**RSO 优势一个字不改;flat 三条与 RAO/RSO 原样未动**(新增文件为主,共享文件只有
+缺省关闭的加法,`tests/test_rso_opsd_guard.py` 逐行盯守)。
+
+| # | 方法 | 8 卡脚本 |
+|---|---|---|
+| 6 | RSO+OPSD | `examples/rso_8gpu/run_synth_rso_opsd_8gpu.sh` |
+
+```bash
+# 训练:用法与 RSO 脚本一致(MODEL / TP / MICRO_BSZ / OUT;可选 TRACE=1)
+MODEL=Qwen/Qwen3.5-4B TP=2 MICRO_BSZ=1 OUT=$HOME/rso_runs/q35_4b_rso_opsd   bash examples/rso_8gpu/run_synth_rso_opsd_8gpu.sh
+# 评测:与 RSO 完全相同(ckpt 是普通 actor 权重,teacher 只存在于训练期)
+python scripts_rso/eval_full_val.py   --model <ckpt>/actor/huggingface --out <dir>/eval_full   --recursive --per-agent-steps 25 --max-depth 6 --max-steps 200 --tp 2
+```
+
+注意:
+- 与 RSO 的底座差异**只有 KL**:本方法 use_kl_loss=True(coef 0.01, low_var_kl),
+  纯 RSO 保持 KL 关——归因对比时记得这一点;
+- `data.val_batch_size=50`(ref+teacher 双前向的主机内存配方,240G 节点曾顶到 203G;
+  大内存节点可调回 100);
+- 训练开销约 +5%/步(teacher 前向);ckpt 与 RSO 同构,评测端无任何差别;
+- 监控:`rso/opsd_loss`(恒≥0,>0 = teacher 有信息差)、`rso/gate_active_ratio`
+  (δ>0 占比)、`rso/priv_truncation_rate_{hard,extreme}`(持续非零需压缩 priv)、
+  `rso/useless_goal_rate`(空转委托,应随训练下降);
+- 测试:`PYTHONPATH=$PWD python tests/test_rso_opsd_priv.py`(另有 `_core`/`_guard`,
+  共 3 个,不需要 GPU;`_core` 里少数用例需要本地已有 Qwen tokenizer,没有则自动跳过)。
+
 ## 五、结果在哪里看
 
 ```

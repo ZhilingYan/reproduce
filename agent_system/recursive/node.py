@@ -77,6 +77,8 @@ class NodeRecord:
     fork_step: Optional[int] = None
     error: Optional[str] = None
     preexisting: bool = False            # 子开张时目标就已满足(浪费型委托的诊断量;适配器写 scratch["preexisting"])
+    useless_goal: bool = False           # [OPSD] goal 有物品不在 root 剩余闭包内(rso/useless_goal_rate 原料;
+                                         # 仅 OPSD 适配器写 scratch["useless_goal"],阶段 1 恒 False 且无人消费)
 
 
 class Node:
@@ -218,6 +220,7 @@ class Node:
             fork_step=self.fork_step,
             error=self.error,
             preexisting=bool(self.scratch.get("preexisting", False)),
+            useless_goal=bool(self.scratch.get("useless_goal", False)),
         )
 
     def __repr__(self) -> str:   # 排查用
