@@ -79,7 +79,6 @@ python3 -m verl.trainer.main_rao \
     +env.rao.per_agent_max_steps=25 \
     +env.rao.max_depth=6 \
     +env.rao.state_block_scope=node \
-
     env.history_length=2 \
     env.rollout.n=8 \
     "env.textcraft_synth.train_difficulties=[easy,medium]" \
