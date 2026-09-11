@@ -1,4 +1,6 @@
 set -x
+# [口径 2026-09-11] 训练 env.max_steps=100、只训 medium、训练中 val=val100 的 easy+medium 50 题;
+#   训练完毕后的全量测评 max_steps=500(eval_full_val.py 默认)。其余参数不变。
 # ============================================================================
 # RSO / TextCraft-Synth — baseline 1/3: 纯 GRPO   (8 GPU 版, Qwen3.5-4B / 9B)
 # ============================================================================
@@ -28,7 +30,7 @@ python3 -m verl.trainer.main_ppo \
     data.train_files=$HOME/data/verl-agent/synth_full/text/train.parquet \
     data.val_files=$HOME/data/verl-agent/synth_full/text/test.parquet \
     data.train_batch_size=16 \
-    data.val_batch_size=100 \
+    data.val_batch_size=50 \
     data.max_prompt_length=8192 \
     data.max_response_length=512 \
     data.filter_overlong_prompts=True \
@@ -64,8 +66,8 @@ python3 -m verl.trainer.main_ppo \
     env.max_steps=100 \
     env.history_length=2 \
     env.rollout.n=8 \
-    "env.textcraft_synth.train_difficulties=[easy,medium]" \
-    "env.textcraft_synth.val_difficulties=[easy,medium,hard,extreme]" \
+    "env.textcraft_synth.train_difficulties=[medium]" \
+    "env.textcraft_synth.val_difficulties=[easy,medium]" \
     env.textcraft_synth.val_split=val100 \
     env.resources_per_worker.num_cpus=0.04 \
     trainer.critic_warmup=0 \

@@ -7,6 +7,10 @@
 - 2026-09-11 需求 2 增加第三条方法 RSO+OPSD(commit 53c55d2)。同批修复(f743607):
   7fe7334 的 `run_synth_rao_8gpu.sh` / `run_synth_rso_8gpu.sh` 有断行 bug,会静默丢参数——
   **若已用这两个脚本训过,结果作废,`git pull` 后重跑**;flat 脚本不受影响。
+- 2026-09-11 口径变更(**仅 flat 三条**,脚本已改直接用):只训 medium、训练中 val=val100 的
+  easy+medium 50 题(训练 max_steps 本就 100);flat 全量测评 max_steps 默认改为 **500**
+  (仍 632 题全难度、temperature=0)。递归三条(需求 2)训练与评测口径**不变**;
+  需求 1 保持原 2000 口径(命令已显式传参)。
 
 ---
 
@@ -15,7 +19,7 @@
 | # | 内容 | 状态 |
 |---|---|---|
 | 0 | 三条 flat baseline 训练 150 步(Qwen3-4B) | ✅ 完成(2026-09-07) |
-| **1** | **用已训好的三个 ckpt(grpo / gtopsd / skill,step150)+ 未训练基座,重跑全量 val 评测,新口径 max_steps=2000 / temperature=0(脚本默认,不传参即是);产出精简结果文件并打包** | ⬜ 待做 |
+| **1** | **用已训好的三个 ckpt(grpo / gtopsd / skill,step150)+ 未训练基座,重跑全量 val 评测,口径 max_steps=2000 / temperature=0(2000 需显式传 `--max-steps 2000`,脚本默认已改 500);产出精简结果文件并打包** | ⬜ 待做 |
 | **2** | **三条新方法 RAO、RSO、RSO+OPSD:Qwen3-4B 各训练 150 步;训完后同样跑新口径全量 val;产出精简结果文件并打包** | ⬜ 待做 |
 
 ---
@@ -25,11 +29,11 @@
 先 `git pull`(需要 commit 7fe7334 之后的 `eval_full_val.py`)。对四个模型各跑一次:
 
 ```bash
-# 三个 ckpt + 基座,共 4 次;不传 --max-steps/--temperature,默认即 2000/贪心
-python scripts_rso/eval_full_val.py \
+# 三个 ckpt + 基座,共 4 次;本需求保持 2000 口径(脚本默认已改 500,故显式传参)
+python scripts_rso/eval_full_val.py --max-steps 2000 \
   --model <ckpt>/global_step_150/actor/huggingface \
   --out   <dir>/eval2k_<name> --split val --tp 2
-python scripts_rso/eval_full_val.py \
+python scripts_rso/eval_full_val.py --max-steps 2000 \
   --model Qwen/Qwen3-4B-Instruct-2507 \
   --out   <dir>/eval2k_before --split val --tp 2
 ```
@@ -94,4 +98,4 @@ fail_reason, n_turns_recorded, last_action, input_tokens, output_tokens, total_t
 pip install -r requirements_rso.txt
 python scripts_rso/prepare_synth_parquet.py --out ~/data/verl-agent/synth_full/text
 ```
-问题排查见 README(递归相关:第四点七节与"已知坑")。
+问题排查见 README。

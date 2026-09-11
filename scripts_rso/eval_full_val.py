@@ -79,9 +79,9 @@ def main():
                     help="断点续跑:跳过 <out>_cases.jsonl 里已完成的题,结果追加写入")
     ap.add_argument("--task-ids", nargs="+", default=None,
                     help="只跑指定 task_id(调试单题用),如 textcraft_synth.val.74")
-    ap.add_argument("--max-steps", type=int, default=2000,
-                    help="每题的 episode 步数上限。默认 2000 是正式评测口径:"
-                         "深题的 gold 最多 209 步,2000 给足余量,确保失败反映能力而非预算;"
+    ap.add_argument("--max-steps", type=int, default=500,
+                    help="每题的 episode 步数上限。默认 500 = 正式评测口径(2026-09-11 起,由 2000 调整;"
+                         "深题的 gold 最多 209 步,500 仍留有余量);"
                          "训练中的快速 val 用 100;--recursive 时它是 lockstep 全局轮数上限")
     ap.add_argument("--history-length", type=int, default=2, help="与训练一致的滑窗长度")
     ap.add_argument("--temperature", type=float, default=0.0,
