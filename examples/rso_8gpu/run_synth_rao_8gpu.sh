@@ -1,4 +1,6 @@
 set -x
+# [口径 2026-09-11] 递归方法:只训 medium;训练中 val=val100 的 easy+medium 50 题。
+#   其余参数不变(训练 env.max_steps=200、评测 --max-steps 200 均不动)。
 # ============================================================================
 # RSO / TextCraft-Synth — RAO(递归 agent,arXiv:2605.06639 复刻)   (8 GPU 版)
 # ============================================================================
@@ -44,7 +46,7 @@ python3 -m verl.trainer.main_rao \
     data.train_files=$HOME/data/verl-agent/synth_full/text/train.parquet \
     data.val_files=$HOME/data/verl-agent/synth_full/text/test.parquet \
     data.train_batch_size=16 \
-    data.val_batch_size=100 \
+    data.val_batch_size=50 \
     data.max_prompt_length=8192 \
     data.max_response_length=1024 \
     data.filter_overlong_prompts=True \
@@ -81,8 +83,8 @@ python3 -m verl.trainer.main_rao \
     +env.rao.state_block_scope=node \
     env.history_length=2 \
     env.rollout.n=8 \
-    "env.textcraft_synth.train_difficulties=[easy,medium]" \
-    "env.textcraft_synth.val_difficulties=[easy,medium,hard,extreme]" \
+    "env.textcraft_synth.train_difficulties=[medium]" \
+    "env.textcraft_synth.val_difficulties=[easy,medium]" \
     env.textcraft_synth.val_split=val100 \
     env.resources_per_worker.num_cpus=0.04 \
     trainer.critic_warmup=0 \

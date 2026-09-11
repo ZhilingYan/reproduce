@@ -170,7 +170,7 @@ def test_G3_stage1_entries_untouched():
 
 # ---------------------------------------------------------------------------- G4
 def test_G4_run_script_differs_only_by_opsd_lines():
-    print("G4 训练脚本相对 RSO 8 卡脚本只差 OPSD 行(入口/rso_opsd 参数/KL 三行/val50/输出名)")
+    print("G4 训练脚本相对 RSO 8 卡脚本只差 OPSD 行(入口/rso_opsd 参数/KL 三行/输出名)")
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     a = [l for l in open(os.path.join(root, "examples/rso_8gpu/run_synth_rso_8gpu.sh"),
                          encoding="utf-8") if not l.lstrip().startswith("#")]
@@ -182,19 +182,18 @@ def test_G4_run_script_differs_only_by_opsd_lines():
     def _allowed_new(l):
         return any(t in l for t in ("main_rso_opsd", "algorithm.rso_opsd.", "use_kl_loss=True",
                                     "kl_loss_coef=0.01", "kl_loss_type=low_var_kl",
-                                    "val_batch_size=50", "rso_runs/rso_opsd",
+                                    "rso_runs/rso_opsd",
                                     "experiment_name='synth_rso_opsd_8gpu'"))
 
     def _allowed_gone(l):
         return any(t in l for t in ("main_rso ", "main_rso \\", "use_kl_loss=False",
-                                    "val_batch_size=100", "rso_runs/rso",
+                                    "rso_runs/rso",
                                     "experiment_name='synth_rso_8gpu'"))
 
     check(all(_allowed_new(l) for l in only_b), f"新增行全部在允许清单内: {only_b}")
     check(all(_allowed_gone(l) for l in only_a), f"减少行全部在允许清单内: {only_a}")
     check(any("gate_beta=2.5" in l for l in only_b), "β=2.5(§2c 初始值)")
     check(any("lambda_coef=0.01" in l for l in only_b), "λ=0.01(§2c 初始值)")
-    check(any("val_batch_size=50" in l for l in only_b), "val_batch_size=50(checklist #4)")
 
 
 if __name__ == "__main__":

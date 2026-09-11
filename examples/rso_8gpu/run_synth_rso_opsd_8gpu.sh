@@ -1,4 +1,6 @@
 set -x
+# [口径 2026-09-11] 递归方法:只训 medium;训练中 val=val100 的 easy+medium 50 题。
+#   其余参数不变(训练 env.max_steps=200、评测 --max-steps 200 均不动)。
 # ============================================================================
 # RSO / TextCraft-Synth — RSO+OPSD(RSO 优势 + 节点局部 priv 的居中门蒸馏)  (8 GPU 版)
 # ============================================================================
@@ -81,8 +83,8 @@ python3 -m verl.trainer.main_rso_opsd \
     +env.rao.state_block_scope=node \
     env.history_length=2 \
     env.rollout.n=8 \
-    "env.textcraft_synth.train_difficulties=[easy,medium]" \
-    "env.textcraft_synth.val_difficulties=[easy,medium,hard,extreme]" \
+    "env.textcraft_synth.train_difficulties=[medium]" \
+    "env.textcraft_synth.val_difficulties=[easy,medium]" \
     env.textcraft_synth.val_split=val100 \
     env.resources_per_worker.num_cpus=0.04 \
     trainer.critic_warmup=0 \

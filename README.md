@@ -21,7 +21,7 @@ python scripts_rso/prepare_synth_parquet.py --out ~/data/verl-agent/synth_full/t
 ```
 
 任务数据随仓库自带(`agent_system/environments/env_package/textcraft_synth/data/`):
-train 2522 题(easy 588 / medium 852 / hard 544 / extreme 538),val 632 题(147/213/136/136),val100 固定验证子集(每难度 25 题)。flat 三条只训 medium(2026-09-11 口径),递归三条训 easy+medium;难度 = 合成树深度(easy 2-3 层 … extreme 10-12 层)。
+train 2522 题(easy 588 / medium 852 / hard 544 / extreme 538),val 632 题(147/213/136/136),val100 固定验证子集(每难度 25 题)。全部 6 条方法只训 medium(2026-09-11 口径);难度 = 合成树深度(easy 2-3 层 … extreme 10-12 层)。
 
 ## 三、训练(8 卡单节点)
 
@@ -46,7 +46,7 @@ MODEL=Qwen/Qwen3.5-4B TP=2 MICRO_BSZ=1 OUT=$HOME/rso_runs/q35_4b_rso \
 
 - 可调的只有 `MODEL / TP / MICRO_BSZ / OUT`(递归另有 `TRACE`);脚本内算法与底座参数已配好,**请勿改动**。`MICRO_BSZ` 只改梯度累积粒度,数学等价,OOM 时放心调小。
 - 曲线:`tensorboard --logdir $OUT/tensorboard`;成功率看 `val/easymedium_success_rate`(flat)或 `rao/root_reward_mean`、`rso/root_reward_mean`(递归)。
-- 训练中每 5 步 val 一次:flat 用 val100 的 easy+medium 子集(50 题,2026-09-11 口径);递归用 val100 全 4 难度 100 题(RSO+OPSD 因 ref+teacher 双前向内存取 50)。
+- 训练中每 5 步 val 一次,统一用 val100 的 easy+medium 子集(50 题,id 固定;2026-09-11 口径)。
 - CPU 测试:`PYTHONPATH=$PWD python tests/test_rso_core.py` 等,`tests/` 下共 12 个。
 
 ## 四、全量评测(632 题)

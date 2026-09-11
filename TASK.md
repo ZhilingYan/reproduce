@@ -9,8 +9,9 @@
   **若已用这两个脚本训过,结果作废,`git pull` 后重跑**;flat 脚本不受影响。
 - 2026-09-11 口径变更(**仅 flat 三条**,脚本已改直接用):只训 medium、训练中 val=val100 的
   easy+medium 50 题(训练 max_steps 本就 100);flat 全量测评 max_steps 默认改为 **500**
-  (仍 632 题全难度、temperature=0)。递归三条(需求 2)训练与评测口径**不变**;
-  需求 1 保持原 2000 口径(命令已显式传参)。
+  (仍 632 题全难度、temperature=0)。需求 1 保持原 2000 口径(命令已显式传参)。
+- 2026-09-11 递归三条同步两项(脚本已改):只训 medium、训练中 val=easy+medium 50 题;
+  **其余不变**(训练 env.max_steps=200、全量评测 --max-steps 200、632 题全难度)。
 
 ---
 
@@ -53,8 +54,6 @@ MODEL=Qwen/Qwen3-4B-Instruct-2507 TP=2 MICRO_BSZ=1 OUT=$HOME/rso_runs/q3_4b_rso 
 MODEL=Qwen/Qwen3-4B-Instruct-2507 TP=2 MICRO_BSZ=1 OUT=$HOME/rso_runs/q3_4b_rso_opsd \
   bash examples/rso_8gpu/run_synth_rso_opsd_8gpu.sh
 # 脚本内的算法与底座参数已配好,除 MODEL/TP/MICRO_BSZ/OUT 外请勿改动。
-# rso_opsd 脚本的 val_batch_size=50 是主机内存保护,≥512G 内存的机器可加参数
-# data.val_batch_size=100 调回。
 
 # 训完后全量 val(三条同一命令,注意递归要加 --recursive 及其参数)
 python scripts_rso/eval_full_val.py \
