@@ -46,7 +46,7 @@ python3 -m verl.trainer.main_rso_opsd \
     data.train_batch_size=16 \
     data.val_batch_size=50 \
     data.max_prompt_length=8192 \
-    data.max_response_length=1024 \
+    data.max_response_length=8192 \
     data.filter_overlong_prompts=True \
     data.truncation='left' \
     data.return_raw_chat=True \

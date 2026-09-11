@@ -86,7 +86,8 @@ def main():
     ap.add_argument("--history-length", type=int, default=2, help="与训练一致的滑窗长度")
     ap.add_argument("--temperature", type=float, default=0.0,
                     help="默认 0(贪心解码),与 RAO 官方推理协议一致,结果可复现")
-    ap.add_argument("--max-new-tokens", type=int, default=512)
+    ap.add_argument("--max-new-tokens", type=int, default=None,
+                    help="每轮生成 token 上限。缺省按方法定:--recursive 时 8192(官方口径),否则 512(flat/SDAR 口径)")
     ap.add_argument("--batch-size", type=int, default=64,
                     help="同时推进的题数(越大越快,显存换速度)")
     ap.add_argument("--tp", type=int, default=1, help="vLLM 张量并行度(9B 建议 2-4)")
@@ -105,6 +106,9 @@ def main():
     ap.add_argument("--trace-dir", default=None,
                     help="[recursive] tree_trace 落盘目录,默认 <out>_tree_trace;传 none 关闭")
     args = ap.parse_args()
+    if args.max_new_tokens is None:
+        # 递归 = 官方 RAO 口径 8192(platoon gconfig.max_new_tokens);flat = SDAR 口径 512
+        args.max_new_tokens = 8192 if args.recursive else 512
 
     from vllm import LLM, SamplingParams
     from transformers import AutoTokenizer
