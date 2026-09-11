@@ -61,7 +61,7 @@ python scripts_rso/eval_full_val.py \
   --recursive --per-agent-steps 25 --max-depth 6 --max-steps 200 --tp 2
 ```
 
-- flat 口径为脚本默认值,无需显式传:`max_steps=500`(2026-09-11 起,由 2000 调整)、
+- flat 口径为脚本默认值,无需显式传:`max_steps=500`、
   `temperature=0`(贪心);递归口径不变:显式 `--max-steps 200`(lockstep 轮数)。
   难度覆盖均为 632 题全难度。
 - 产出:`<out>_metrics.json`(总体/分难度成功率、平均轮数)+ `<out>_cases.jsonl`(每题一行,含逐轮完整轨迹)。同一 `--out` 重复执行会跳过已完成的题(断点续跑)。
