@@ -7,7 +7,7 @@ set -x
 # 与三条 flat baseline 的关系:同一环境、同一数据、同一批量;差异只有两组:
 #   [算法] main_rso + adv_estimator=rso + +algorithm.rso.*(见下)
 #   [底座] 递归方法按 RAO 官方口径:entropy_coeff=0(熵只记日志不进梯度)、
-#          use_kl_loss=False(官方 kl_ctl=0)、max_response_length=8192(与官方一致;2026-09-11 前曾用 1024 折中)、无 invalid_action_penalty(官方无此惩罚;RSO 的无效动作惩罚由 +algorithm.rso.invalid_coef=0.1 在优势层施加)。
+#          use_kl_loss=False(官方 kl_ctl=0)、max_response_length=512(2026-09-17 起;此前 8192 因生成无停止串常写满上限,lockstep 下单步 6.6h)、无 invalid_action_penalty(官方无此惩罚;RSO 的无效动作惩罚由 +algorithm.rso.invalid_coef=0.1 在优势层施加)。
 #   flat baseline 保持 SDAR 原口径不变,两套口径的差异在论文中作为方法自带设定声明。
 # 递归内核参数(env.rao.*):每 agent 25 步预算、树深上限 6 —— 与 RAO 官方
 # TextCraft-Synth 配置逐项一致(synth_rollout.py:83,89;yaml rollout_config.max_steps: 25)。
@@ -49,7 +49,7 @@ python3 -m verl.trainer.main_rso \
     data.train_batch_size=16 \
     data.val_batch_size=50 \
     data.max_prompt_length=8192 \
-    data.max_response_length=8192 \
+    data.max_response_length=512 \
     data.filter_overlong_prompts=True \
     data.truncation='left' \
     data.return_raw_chat=True \
