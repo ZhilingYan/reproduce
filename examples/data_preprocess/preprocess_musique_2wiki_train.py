@@ -3,8 +3,8 @@
 # ~/data/searchR1_processed_direct/test.parquet 的 7 个子 benchmark)。
 #
 # 输入:FlashRAG_datasets 的原始 jsonl(已下载到项目盘):
-#   /projects/bhoh/zyan11/sdar_repro/data/flashrag_raw/musique_train.jsonl          19,938 行
-#   /projects/bhoh/zyan11/sdar_repro/data/flashrag_raw/2wikimultihopqa_train.jsonl  15,000 行
+#   $FLASHRAG_RAW/musique_train.jsonl          19,938 行
+#   $FLASHRAG_RAW/2wikimultihopqa_train.jsonl  15,000 行(下载链接见 RAW_DIR 处注释)
 #   每行:{"id", "question", "golden_answers", "metadata"{各子集自有字段}}
 #
 # 输出:~/data/searchR1_musique_2wiki/train.parquet,共 34,938 行。
