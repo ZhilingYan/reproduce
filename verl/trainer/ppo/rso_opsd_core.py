@@ -118,6 +118,7 @@ def build_action_token_mask(
     responses: torch.Tensor,
     response_mask: torch.Tensor,
     tokenizer,
+    act_tags=None,
 ) -> Tuple[torch.Tensor, dict]:
     """按设计 §2b 构造 act_mask:蒸馏只作用在【首个】<action>…</action> 的内容 token 上。
 
@@ -134,11 +135,16 @@ def build_action_token_mask(
     Returns:
         (act_mask float32 (bs, resp_len), metrics)。
     """
+    # [2026-09-18 search 域扩展] act_tags:动作标签名列表,缺省 ["action"](textcraft 口径,
+    # 行为逐字节不变);search 递归传 ["search","answer","delegate"]
+    # (RSO_searchqa_data_mapping.md §四:三标签互斥,掩码取最先出现的完整块的内容)。
+    tag_pairs = [(f"<{t}>".encode(), f"</{t}>".encode())
+                 for t in (act_tags or ["action"])]
     bs, resp_len = responses.shape
     act_mask = torch.zeros((bs, resp_len), dtype=torch.float32)
-    n_no_action = 0        # 整行没有 <action>(格式坏行)
-    n_truncated = 0        # 有 <action> 无 </action>(响应被截断)
-    n_multi = 0            # 多个 <action> 块(只取首段)
+    n_no_action = 0        # 整行没有动作标签(格式坏行)
+    n_truncated = 0        # 有开标签无闭标签(响应被截断)
+    n_multi = 0            # 多个动作块(只取首段)
     n_rows = 0
 
     for i in range(bs):
@@ -149,17 +155,21 @@ def build_action_token_mask(
         ids = responses[i, valid_idx].tolist()
         pieces = _token_byte_pieces(tokenizer, ids)
         text = b"".join(pieces)
-        lo = text.find(_ACTION_OPEN_B)
+        lo, open_b, close_b = -1, None, None
+        for ob, cb in tag_pairs:                     # 取最先出现的开标签
+            p = text.find(ob)
+            if p >= 0 and (lo < 0 or p < lo):
+                lo, open_b, close_b = p, ob, cb
         if lo < 0:
             n_no_action += 1
             continue
-        hi = text.find(_ACTION_CLOSE_B, lo)
+        hi = text.find(close_b, lo)
         if hi < 0:
             n_truncated += 1
             continue
-        if text.find(_ACTION_OPEN_B, hi) >= 0:
+        if any(text.find(ob, hi) >= 0 for ob, _ in tag_pairs):
             n_multi += 1
-        content_lo = lo + len(_ACTION_OPEN_B)
+        content_lo = lo + len(open_b)
         content_hi = hi
         if content_hi <= content_lo:
             continue                               # 空动作块:没有内容 token 可盖

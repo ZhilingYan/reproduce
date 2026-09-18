@@ -70,8 +70,12 @@ class RSOOPSDRayTrainer(RayPPOTrainer):
         self.opsd_gate_beta = float(_opsd.get('gate_beta', 2.5))     # §2c 初始值
         self.opsd_lambda = float(_opsd.get('lambda_coef', 0.01))     # §2c λ 初始值
         self.opsd_prefix_template = _opsd.get('prefix_template', None)
+        # [2026-09-18 search 域扩展] act_mask 的标签集,缺省 ["action"](textcraft 行为不变);
+        # search 递归入口注入 ["search","answer","delegate"](mapping §四)。
+        self.opsd_act_tags = list(_opsd.get('act_tags', None) or ["action"])
         print(f"[RSO+OPSD trainer] rso_params={self.rso_params} "
-              f"gate_beta={self.opsd_gate_beta} lambda={self.opsd_lambda}")
+              f"gate_beta={self.opsd_gate_beta} lambda={self.opsd_lambda} "
+              f"act_tags={self.opsd_act_tags}")
 
     # ------------------------------------------------------------ teacher 前向
     def _compute_teacher_log_probs(self, batch: DataProto):
@@ -259,7 +263,8 @@ class RSOOPSDRayTrainer(RayPPOTrainer):
                         metrics.update(teacher_metrics)
                     with _timer("act_mask", timing_raw):
                         act_mask, act_metrics = build_action_token_mask(
-                            batch.batch["responses"], batch.batch["response_mask"], self.tokenizer)
+                            batch.batch["responses"], batch.batch["response_mask"], self.tokenizer,
+                            act_tags=self.opsd_act_tags)
                         batch.batch["act_mask"] = act_mask.to(batch.batch["responses"].device)
                         metrics.update(act_metrics)
                     _opsd_delta = (teacher_log_probs - batch.batch["old_log_probs"]) * batch.batch["response_mask"]
