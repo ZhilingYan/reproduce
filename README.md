@@ -59,7 +59,7 @@ python examples/data_preprocess/make_sciworld_dummy_parquet.py   # train/val 假
 python examples/data_preprocess/make_sciworld_test_parquet.py    # 官方 test 全量 1,819 行 → ~/data/sciworld/test.parquet
 ```
 
-## 三、训练(8 卡单节点,5 个方法)
+## 三、训练(8 卡单节点,6 个方法)
 
 | # | 方法 | TextCraft-Synth | Search-QA | ScienceWorld |
 |---|---|---|---|---|
@@ -68,12 +68,13 @@ python examples/data_preprocess/make_sciworld_test_parquet.py    # 官方 test �
 | 3 | SDAR(技能库特权) | `run_synth_skill_8gpu.sh` | `run_search_skill_8gpu.sh` | `run_sciworld_skill_8gpu.sh` |
 | 4 | RSO(递归) | `run_synth_rso_8gpu.sh` | `run_search_rso_8gpu.sh` | `run_sciworld_rso_8gpu.sh` |
 | 5 | RSO+OPSD(递归) | `run_synth_rso_opsd_8gpu.sh` | `run_search_rso_opsd_8gpu.sh` | `run_sciworld_rso_opsd_8gpu.sh` |
+| 6 | RAO(递归 baseline,参数与 RSO 对齐) | `run_synth_rao_8gpu.sh` | `run_search_rao_8gpu.sh` | `run_sciworld_rao_8gpu.sh` |
 
 脚本都在 `examples/rso_8gpu/`;可调的只有 `MODEL / TP / MICRO_BSZ / OUT`(递归另有 `TRACE`),
 脚本内算法与底座参数已配好,**请勿改动**。`MICRO_BSZ` 只改梯度累积粒度,数学等价,OOM 时放心调小。
 
 ```bash
-# TextCraft(flat 1-3:MICRO_BSZ=2;递归 4-5:MICRO_BSZ=1)
+# TextCraft(flat 1-3:MICRO_BSZ=2;递归 4-6:MICRO_BSZ=1)
 MODEL=Qwen/Qwen3.5-4B TP=2 MICRO_BSZ=1 OUT=$HOME/rso_runs/q35_4b_rso \
   bash examples/rso_8gpu/run_synth_rso_8gpu.sh
 
@@ -106,7 +107,7 @@ MODEL=Qwen/Qwen3-4B-Instruct-2507 OUT=$HOME/rso_runs/sciworld_rso_opsd \
 # flat(1-3)与未训练基座
 python scripts_rso/eval_full_val.py \
   --model <ckpt>/global_step_150/actor/huggingface --out <dir>/eval_full --split val --tp 2
-# 递归(4-5)
+# 递归(4-6)
 python scripts_rso/eval_full_val.py \
   --model <ckpt>/global_step_150/actor/huggingface --out <dir>/eval_full --split val \
   --recursive --per-agent-steps 25 --max-depth 6 --max-steps 200 --tp 2

@@ -21,7 +21,7 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
   bash examples/rso_8gpu/run_<bench脚本>_<方法>_8gpu.sh trainer.experiment_name=$NAME
 ```
 
-方法代号 ↔ 脚本:rso_opsd / rso / skill / gtopsd / grpo(README §三 矩阵;下表即优先级序:同时提交,rso_opsd 最优先、grpo 最后;bench 脚本名:textcraft=`synth`,searchqa=`search`,sciworld=`sciworld`)。
+方法代号 ↔ 脚本:rso_opsd / rso / rao / skill / gtopsd / grpo(README §三 矩阵;RAO 为官方递归 baseline,各参数与 RSO 对齐;下表即优先级序:同时提交,rso_opsd 最优先、grpo 最后;bench 脚本名:textcraft=`synth`,searchqa=`search`,sciworld=`sciworld`)。
 
 ### 1. TextCraft(训练 + 测评;在跑的照旧跑完,缺的补齐——第 3 块要用这五个方法的 ckpt)
 
@@ -29,6 +29,7 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
 |---|---|---|---|
 | rso_opsd | qwen3-4b_textcraft_rso_opsd **(DONE)** | gemma-2b_textcraft_rso_opsd **(DONE)** | gemma-26b_textcraft_rso_opsd **(DONE)** |
 | rso | qwen3-4b_textcraft_rso **(DONE)** | gemma-2b_textcraft_rso **(DONE)** | gemma-26b_textcraft_rso **(DONE)** |
+| rao | qwen3-4b_textcraft_rao | gemma-2b_textcraft_rao | gemma-26b_textcraft_rao |
 | skill | qwen3-4b_textcraft_skill **(DONE)** | gemma-2b_textcraft_skill **(DONE)** | gemma-26b_textcraft_skill **(DONE)** |
 | gtopsd | qwen3-4b_textcraft_gtopsd **(DONE)** | gemma-2b_textcraft_gtopsd **(DONE)** | gemma-26b_textcraft_gtopsd **(DONE)** |
 | grpo | qwen3-4b_textcraft_grpo **(DONE)** | gemma-2b_textcraft_grpo **(DONE)** | gemma-26b_textcraft_grpo **(DONE)** |
@@ -39,6 +40,7 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
 |---|---|---|---|
 | rso_opsd | qwen3-4b_searchqa_rso_opsd | gemma-2b_searchqa_rso_opsd **(ONGOING)** | gemma-26b_searchqa_rso_opsd **(ONGOING)** |
 | rso | qwen3-4b_searchqa_rso | gemma-2b_searchqa_rso | gemma-26b_searchqa_rso |
+| rao | qwen3-4b_searchqa_rao | gemma-2b_searchqa_rao | gemma-26b_searchqa_rao |
 | skill | qwen3-4b_searchqa_skill | gemma-2b_searchqa_skill | gemma-26b_searchqa_skill |
 | gtopsd | qwen3-4b_searchqa_gtopsd | gemma-2b_searchqa_gtopsd | gemma-26b_searchqa_gtopsd |
 | grpo | qwen3-4b_searchqa_grpo | gemma-2b_searchqa_grpo | gemma-26b_searchqa_grpo |
@@ -55,6 +57,7 @@ NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/global_step_150/actor/huggingfa
 |---|---|---|---|
 | rso_opsd | qwen3-4b_sciworld_ood_rso_opsd | gemma-2b_sciworld_ood_rso_opsd **(ONGOING)** | gemma-26b_sciworld_ood_rso_opsd **(ONGOING)** |
 | rso | qwen3-4b_sciworld_ood_rso | gemma-2b_sciworld_ood_rso **(ONGOING)** | gemma-26b_sciworld_ood_rso **(ONGOING)** |
+| rao | qwen3-4b_sciworld_ood_rao | gemma-2b_sciworld_ood_rao | gemma-26b_sciworld_ood_rao |
 | skill | qwen3-4b_sciworld_ood_skill | gemma-2b_sciworld_ood_skill **(ONGOING)** | gemma-26b_sciworld_ood_skill **(ONGOING)** |
 | gtopsd | qwen3-4b_sciworld_ood_gtopsd | gemma-2b_sciworld_ood_gtopsd **(ONGOING)** | gemma-26b_sciworld_ood_gtopsd **(ONGOING)** |
 | grpo | qwen3-4b_sciworld_ood_grpo | gemma-2b_sciworld_ood_grpo **(ONGOING)** | gemma-26b_sciworld_ood_grpo **(ONGOING)** |
@@ -65,6 +68,7 @@ NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/global_step_150/actor/huggingfa
 |---|---|---|---|
 | rso_opsd | qwen3-4b_sciworld_rso_opsd | gemma-2b_sciworld_rso_opsd **(ONGOING)** | gemma-26b_sciworld_rso_opsd **(ONGOING)** |
 | rso | qwen3-4b_sciworld_rso | gemma-2b_sciworld_rso | gemma-26b_sciworld_rso |
+| rao | qwen3-4b_sciworld_rao | gemma-2b_sciworld_rao | gemma-26b_sciworld_rao |
 | skill | qwen3-4b_sciworld_skill | gemma-2b_sciworld_skill | gemma-26b_sciworld_skill |
 | gtopsd | qwen3-4b_sciworld_gtopsd | gemma-2b_sciworld_gtopsd | gemma-26b_sciworld_gtopsd |
 | grpo | qwen3-4b_sciworld_grpo | gemma-2b_sciworld_grpo | gemma-26b_sciworld_grpo |

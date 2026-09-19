@@ -7,7 +7,7 @@ set -x
 # 与三条 flat baseline 的关系:同一环境、同一数据、同一批量;差异只有两组:
 #   [算法] main_rao + adv_estimator=rao + +algorithm.rao.*(见下)
 #   [底座] 递归方法按 RAO 官方口径:entropy_coeff=0(熵只记日志不进梯度)、
-#          use_kl_loss=False(官方 kl_ctl=0)、max_response_length=8192(与官方一致;2026-09-11 前曾用 1024 折中)、无 invalid_action_penalty(官方无此惩罚)。
+#          use_kl_loss=False(官方 kl_ctl=0)、max_response_length=1024(2026-09-19 用户拍板:RAO 各参数与 RSO 对齐;官方原配 8192)、无 invalid_action_penalty(官方无此惩罚)。
 #   flat baseline 保持 SDAR 原口径不变,两套口径的差异在论文中作为方法自带设定声明。
 # 递归内核参数(env.rao.*):每 agent 25 步预算、树深上限 6 —— 与 RAO 官方
 # TextCraft-Synth 配置逐项一致(synth_rollout.py:83,89;yaml rollout_config.max_steps: 25)。
@@ -47,7 +47,7 @@ python3 -m verl.trainer.main_rao \
     data.train_batch_size=16 \
     data.val_batch_size=50 \
     data.max_prompt_length=8192 \
-    data.max_response_length=8192 \
+    data.max_response_length=1024 \
     data.filter_overlong_prompts=True \
     data.truncation='left' \
     data.return_raw_chat=True \
@@ -65,6 +65,7 @@ python3 -m verl.trainer.main_rao \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$TP \
     actor_rollout_ref.rollout.name=$ENGINE \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
+    actor_rollout_ref.rollout.max_num_batched_tokens=12288 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
