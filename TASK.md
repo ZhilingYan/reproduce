@@ -12,6 +12,8 @@
 | gemma-2b | `google/gemma-4-E2B-it` | 需单独环境:transformers ≥ 5.x + 支持 gemma-4 的近期 vllm |
 | gemma-26b | `google/gemma-4-26B-A4B-it` | 需单独环境:transformers ≥ 5.x + 支持 gemma-4 的近期 vllm;建议 TP=4、MICRO_BSZ=1 |
 
+gemma-26b需要2节点*8 H100，共16 GPU训练
+
 ## 实验名 = bash 参数
 
 每条 run 的实验名 `NAME=<模型代号>_<bench>_<方法>`,统一这样起(交付文件同名):
