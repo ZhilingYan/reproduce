@@ -14,3 +14,5 @@
 # limitations under the License.
 
 from .textcraft_synth import *
+
+from .sciworld import *

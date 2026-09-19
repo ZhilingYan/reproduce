@@ -733,6 +733,119 @@ class TextCraftSynthEnvironmentManager(EnvironmentManagerBase):
                 return
 
 
+class SciWorldEnvironmentManager(EnvironmentManagerBase):
+    """ScienceWorld(flat)的字符串加工层。2026-09-19 新增,底本 =
+    TextCraftSynthEnvironmentManager(上方);sciworld 差异:
+      * 观测 = 任务行 + 初始 look / 上一步执行结果 + admissible 槽位
+        (合法动作清单是 zero-shot 成绩决定因素,prompts/sciworld.py 头注释);
+      * 历史存 (动作, 该动作的执行结果) —— 与递归适配器和评测脚本同口径
+        (textcraft 管理层存的是动作前观测,有意偏离,移植对照表);
+      * invalid = 格式级 ∪ env unmatched(RSO_sciworld_data_mapping.md §一规则 3);
+      * 成功统计:官方分(负分裁零/100)per-task 分桶,猝死族单列,焦死率。
+    """
+
+    def __init__(self, envs, projection_f, config):
+        self.memory = SimpleMemory()
+        super().__init__(envs, projection_f, config)
+
+    def reset(self, kwargs) -> Dict[str, Any]:
+        # 任务由环境自采(官方 train 划分任务均匀采样;val = 固定 50 case),
+        # 数据集 kwargs 忽略(假 parquet 只驱动批次)
+        obs, infos = self.envs.reset()
+        self.task_obs = [f"Task: {info.get('extra.task_desc', '')}" for info in infos]
+        self.admissible = [str(info.get('extra.admissible', '')) for info in infos]
+        self.pre_step_obs = list(obs)          # 初始 look / 之后为上一步执行结果
+        observations = {
+            'text': self.build_text_obs(infos, init=True),
+            'image': None,
+            'anchor': list(obs),
+        }
+        self.memory.reset(batch_size=len(infos))
+        return observations, infos
+
+    def step(self, text_actions: List[str]):
+        actions, valids = self.projection_f(text_actions)
+        next_obs, rewards, dones, infos = self.envs.step(actions)
+
+        # 历史存 (动作, 其执行结果):后配对口径(评测脚本踩过的 pairing 坑,勿回退)
+        self.memory.store({'text_obs': list(next_obs), 'action': actions})
+        self.pre_step_obs = list(next_obs)
+        for i, info in enumerate(infos):
+            adm = info.get('extra.admissible')
+            if adm:
+                self.admissible[i] = str(adm)
+            unmatched = bool(info.get('extra.env_unmatched', False))
+            info['is_action_valid'] = to_numpy(int(bool(valids[i]) and not unmatched))
+
+        next_observations = {
+            'text': self.build_text_obs(infos),
+            'image': None,
+            'anchor': list(next_obs),
+        }
+        rewards = to_numpy(rewards)
+        dones = to_numpy(dones)
+
+        # prompt 超长守卫(textcraft synth 管理层同款口径:26000 字符 ≈ 7K token)
+        for i, t in enumerate(next_observations['text']):
+            if len(t) > 26000 and not dones[i]:
+                dones[i] = True
+                infos[i]['prompt_overflow'] = True
+                next_observations['text'][i] = (
+                    "Episode terminated: context length limit exceeded.")
+        return next_observations, rewards, dones, infos
+
+    def build_text_obs(self, infos, init: bool = False) -> List[str]:
+        postprocess_text_obs = []
+        if not init and self.config.env.history_length > 0:
+            memory_contexts, valid_lens = self.memory.fetch(
+                self.config.env.history_length,
+                obs_key="text_obs",
+                action_key="action")
+
+        for i in range(len(self.task_obs)):
+            if init:
+                current_observation = (
+                    self.task_obs[i] + "\n\nCurrent observation: " + self.pre_step_obs[i])
+            else:
+                current_observation = (
+                    self.task_obs[i]
+                    + "\n\nResult of your last action: " + self.pre_step_obs[i])
+
+            if init or self.config.env.history_length <= 0:
+                obs = SCIWORLD_TEMPLATE_NO_HIS.format(
+                    current_observation=current_observation,
+                    admissible_actions=self.admissible[i])
+            else:
+                obs = SCIWORLD_TEMPLATE.format(
+                    current_observation=current_observation,
+                    step_count=len(self.memory[i]),
+                    history_length=valid_lens[i],
+                    action_history=memory_contexts[i],
+                    current_step=len(self.memory[i]) + 1,
+                    admissible_actions=self.admissible[i])
+            postprocess_text_obs.append(obs)
+        return postprocess_text_obs
+
+    def _process_batch(self, batch_idx, total_batch_list, total_infos, success):
+        for i in reversed(range(len(total_batch_list[batch_idx]))):
+            batch_item = total_batch_list[batch_idx][i]
+            if batch_item['active_masks']:
+                info = total_infos[batch_idx][i]
+                won_value = float(info.get('won', False))
+                score = max(float(info.get('extra.score', 0)), 0.0) / 100.0
+                success['success_rate'].append(won_value)
+                success['official_score'].append(score)
+                task = str(info.get('extra.task') or '')
+                if task:
+                    success[f"{task}_official"].append(score)
+                    bucket = ("sudden_death" if info.get('extra.sudden_death_task')
+                              else "main")
+                    success[f"{bucket}_official"].append(score)
+                success['focus_death_rate'].append(
+                    float(bool(info.get('extra.focus_death', False))))
+                return
+
+
 class AppWorldEnvironmentManager(EnvironmentManagerBase):
     def __init__(self, envs, projection_f, config):
         self.memory = SimpleMemory()
@@ -834,6 +947,20 @@ def make_envs(config):
         projection_f = partial(search_projection)
         envs = SearchEnvironmentManager(_envs, projection_f, config)
         val_envs = SearchEnvironmentManager(_val_envs, projection_f, config)
+        return envs, val_envs
+    elif "sciworld" in config.env.env_name.lower():
+        # flat ScienceWorld(2026-09-19 新增)。递归(sciworld_rso)不走本工厂——
+        # 由 main_rso_opsd_sciworld.py 直接调 sciworld/opsd_factory.py 装配。
+        assert "sciworld_rso" not in config.env.env_name.lower(), (
+            "sciworld_rso(递归)不经 make_envs,请用 verl.trainer.main_rso_opsd_sciworld")
+        from agent_system.environments.env_package.sciworld import (
+            build_sciworld_envs, sciworld_projection)
+        _envs = build_sciworld_envs(seed=config.env.seed, env_num=config.data.train_batch_size, group_n=group_n, is_train=True, env_config=config.env)
+        _val_envs = build_sciworld_envs(seed=config.env.seed + 1000, env_num=config.data.val_batch_size, group_n=1, is_train=False, env_config=config.env)
+
+        projection_f = partial(sciworld_projection)
+        envs = SciWorldEnvironmentManager(_envs, projection_f, config)
+        val_envs = SciWorldEnvironmentManager(_val_envs, projection_f, config)
         return envs, val_envs
     elif "gym_cards" in config.env.env_name.lower():
         from agent_system.environments.env_package.gym_cards import build_gymcards_envs, gym_projection
