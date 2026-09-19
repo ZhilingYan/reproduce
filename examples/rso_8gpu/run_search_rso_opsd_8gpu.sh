@@ -3,7 +3,7 @@ set -x
 # RSO / Search-QA — RSO+OPSD(递归委托 + 节点局部特权蒸馏)  (8 GPU 版)
 # ============================================================================
 # 训练集 = MuSiQue + 2Wiki(examples/data_preprocess 三个脚本生成,见 README_SEARCH.md);
-# 训练中验证 = val_sub.parquet(7 源各 15 条固定 case);检索走本地 e5 服务(SEARCH_URL)。
+# 训练中验证 = val_sub.parquet(musique/2wiki/hotpotqa 三源各 15 条固定 case);检索走本地 e5 服务(SEARCH_URL)。
 # 参数口径 = 2026-09-19 审核定稿的参数表(Ideation/flat参数对照_textcraft_vs_searchqa.md):
 #   batch 128×组8 / mini 256 / micro 16 / logprob 32 / TP2 / KL 0.01 low_var / 熵 0 /
 #   α=0.1 c=3 η=0.1 / λ=0.01 β=2.5 / per_agent 25 / depth 6 / prompt 4096 / response 1024 /
@@ -47,7 +47,7 @@ python3 -m verl.trainer.main_rso_opsd_search \
     data.train_files=$DATA_DIR/train.parquet \
     data.val_files=$DATA_DIR/val_sub.parquet \
     data.train_batch_size=128 \
-    data.val_batch_size=105 \
+    data.val_batch_size=45 \
     data.max_prompt_length=4096 \
     data.max_response_length=1024 \
     data.filter_overlong_prompts=True \

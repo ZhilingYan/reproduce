@@ -75,7 +75,7 @@ def validate_rso_opsd_search_config(config) -> None:
     vbs = int(config.data.val_batch_size)
     if vbs > 200:
         print(f"[RSO+OPSD/search] WARNING data.val_batch_size={vbs} > 200:"
-              "ref + teacher 双前向的主机内存配方,注意 val_sub 是 175 行")
+              "ref + teacher 双前向的主机内存配方,注意 val_sub 是 45 行(三源×15)")
     rso_alg = dict(config.algorithm.get("rso", {}) or {})
     print(f"[RSO+OPSD/search] algorithm.rso={rso_alg}  rso_opsd={{lambda_coef:{lam}, "
           f"gate_beta:{beta}, act_tags:{tags}}}")

@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
-# [2026-09-18 新增] Search-RSO 的两个数据产物:
+# [2026-09-18 新增;2026-09-19 改三源口径] Search-RSO 的数据产物:
+#   0) 评测源收窄(2026-09-19 用户拍板):只保留 musique / 2wikimultihopqa / hotpotqa,
+#      nq/triviaqa/popqa/bamboogle 四个子集不再进验证与全量测试。
 #   1) ~/data/searchR1_musique_2wiki/val_sub.parquet
-#      训练中验证用的固定子集:7 个 data_source 各抽 15 条(2026-09-19 用户拍板,原 25)(seed=42,排序后抽,跨机器可复现),
-#      共 105 行;schema 与 test.parquet 完全一致(直接行子集,不重建)。
+#      训练中验证用的固定子集:3 个 data_source 各抽 15 条(seed=42,排序后抽,
+#      跨机器可复现),共 45 行;schema 与 test.parquet 完全一致(直接行子集,不重建)。
+#   1b) val_smoke.parquet:3 源各 3 条(9 行),只为冒烟验证通路。
+#   1c) ~/data/searchR1_processed_direct/test_3src.parquet
+#      训练后全量测试集 = test.parquet 过滤到三源(musique 2,417 + 2wiki 12,576 +
+#      hotpotqa 7,405 = 22,398 行);原 test.parquet 保留不动。
 #   2) ~/data/searchR1_musique_2wiki/decomp_store.json
 #      递归适配器的 decomp/别名库,键 = 归一化题面:
 #        {norm_q: {"targets": [gold...],
@@ -21,22 +27,42 @@ import pandas as pd
 DATA_DIR = os.path.expanduser("~/data/searchR1_musique_2wiki")
 TEST_PQ = os.path.expanduser("~/data/searchR1_processed_direct/test.parquet")
 DATA_IDS = os.environ.get("WIKI2_DATA_IDS", os.path.expanduser("~/data/data_ids"))
+# 2026-09-19 用户拍板:验证与全量测试只保留这三源
+KEEP_SOURCES = ("musique", "2wikimultihopqa", "hotpotqa")
 
 
 def norm(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^0-9a-z]+", " ", str(s).lower())).strip()
 
 
-def build_val_sub():
-    df = pd.read_parquet(TEST_PQ)
+def _sample_per_source(df, n_per_source: int):
     parts = []
     for src, g in df.groupby("data_source"):
         g = g.sort_values(by="extra_info", key=lambda col: col.map(lambda e: int(e["index"])))
-        parts.append(g.sample(n=min(15, len(g)), random_state=42))
-    sub = pd.concat(parts).reset_index(drop=True)
+        parts.append(g.sample(n=min(n_per_source, len(g)), random_state=42))
+    return pd.concat(parts).reset_index(drop=True)
+
+
+def build_val_sub():
+    df = pd.read_parquet(TEST_PQ)
+    df = df[df["data_source"].isin(KEEP_SOURCES)]
+    sub = _sample_per_source(df, 15)
     out = os.path.join(DATA_DIR, "val_sub.parquet")
     sub.to_parquet(out, index=False)
     print("val_sub:", len(sub), "行", dict(sub["data_source"].value_counts()), "→", out)
+    smoke = _sample_per_source(df, 3)
+    out2 = os.path.join(DATA_DIR, "val_smoke.parquet")
+    smoke.to_parquet(out2, index=False)
+    print("val_smoke:", len(smoke), "行 →", out2)
+
+
+def build_test_keep():
+    """训练后全量测试集:test.parquet 过滤到三源,原文件不动。"""
+    df = pd.read_parquet(TEST_PQ)
+    kept = df[df["data_source"].isin(KEEP_SOURCES)].reset_index(drop=True)
+    out = os.path.join(os.path.dirname(TEST_PQ), "test_3src.parquet")
+    kept.to_parquet(out, index=False)
+    print("test_3src:", len(kept), "行", dict(kept["data_source"].value_counts()), "→", out)
 
 
 def load_2wiki_alias_maps():
@@ -115,4 +141,5 @@ def build_store():
 
 if __name__ == "__main__":
     build_val_sub()
+    build_test_keep()
     build_store()

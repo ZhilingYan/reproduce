@@ -4,7 +4,7 @@ set -x
 # ============================================================================
 # 参数 = SDAR 官方 search 脚本原口径(examples/grpo_opsd_trainer/run_search_3b.sh),
 # 加三处 2026-09-19 审核定稿的差异(Ideation/flat参数对照_textcraft_vs_searchqa.md):
-#   ①数据换 MuSiQue+2Wiki 训练集 + val_sub(7源×15)验证;
+#   ①数据换 MuSiQue+2Wiki 训练集 + val_sub(三源×15)验证;
 #   ②+algorithm.sdar.privileged_source=gt(teacher 的特权 = 本题标准答案,
 #     经 search env 的 info['extra.gt_plan'] 通道逐行注入);
 #   ③test_freq=5 / save_freq=10 + 保留 2 个 ckpt;推理标签 <thought>(prompts/search.py,
@@ -31,7 +31,7 @@ python3 -m verl.trainer.main_sdar \
     data.train_files=$DATA_DIR/train.parquet \
     data.val_files=$DATA_DIR/val_sub.parquet \
     data.train_batch_size=128 \
-    data.val_batch_size=105 \
+    data.val_batch_size=45 \
     data.max_prompt_length=4096 \
     data.max_response_length=512 \
     data.filter_overlong_prompts=True \

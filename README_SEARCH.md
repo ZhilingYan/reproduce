@@ -27,8 +27,11 @@ bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log &
 
 ## 2. 数据管线(四步,产物落 ~/data/)
 
+> 评测源口径(2026-09-19 拍板):验证与全量测试只保留 **musique / 2wikimultihopqa /
+> hotpotqa** 三源;nq/triviaqa/popqa/bamboogle 不再使用(④ 的脚本会自动过滤)。
+
 ```bash
-# ① Search-R1 官方 7 子集测试集(train 部分本方案不用):
+# ① Search-R1 官方测试集(train 部分本方案不用;④ 会从中过滤出三源):
 python examples/data_preprocess/preprocess_search_r1_dataset.py     # → ~/data/searchR1_processed_direct/
 
 # ② MuSiQue+2Wiki 训练集(先按脚本头注释下载 FlashRAG 两个 train.jsonl 到 $FLASHRAG_RAW):
@@ -37,8 +40,10 @@ python examples/data_preprocess/preprocess_musique_2wiki_train.py   # → ~/data
 # ③ 2Wiki evidences → question_decomposition 回填(先按脚本头注释取官方 data_ids 到 $WIKI2_DATA_IDS):
 python examples/data_preprocess/convert_2wiki_evidences_to_decomp.py
 
-# ④ 验证子集(7源×15=105)与 decomp/别名库:
-python examples/data_preprocess/make_searchrso_data_products.py     # → val_sub.parquet + decomp_store.json
+# ④ 验证子集(三源×15=45)、冒烟子集(三源×3=9)、全量测试集(三源过滤,22,398 行)
+#    与 decomp/别名库:
+python examples/data_preprocess/make_searchrso_data_products.py
+#    → val_sub.parquet + val_smoke.parquet + test_3src.parquet + decomp_store.json
 ```
 
 ## 3. 训练(与 TextCraft 同一套环境变量约定)
@@ -54,7 +59,12 @@ MODEL=Qwen/Qwen3-4B-Instruct-2507 TP=2 OUT=$HOME/rso_runs/search_rso_opsd \
 ```
 
 健康检查(前 5 步):`rso/valid_action_ratio` > 0.9;递归另看 `rso/delegating_trees` > 0、
-`rso/G_negative_ratio` ≡ 0;验证指标为 per-source(`val/musique_success_rate` 等 7 桶)。
+`rso/G_negative_ratio` ≡ 0;验证指标为 per-source(musique / 2wikimultihopqa /
+hotpotqa 三桶,`val/musique_success_rate` 等)。
+
+训练完成后的全量测试:同一脚本把 `data.val_files` 换成
+`~/data/searchR1_processed_direct/test_3src.parquet`、`data.val_batch_size=512`,
+加 `trainer.val_only=True`(参数其余不动,与训练时同口径)。
 
 ## 4. 与 TextCraft 的隔离说明
 
