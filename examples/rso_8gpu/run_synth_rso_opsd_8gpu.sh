@@ -46,7 +46,7 @@ python3 -m verl.trainer.main_rso_opsd \
     data.train_batch_size=16 \
     data.val_batch_size=50 \
     data.max_prompt_length=8192 \
-    data.max_response_length=512 \
+    data.max_response_length=1024 \
     data.filter_overlong_prompts=True \
     data.truncation='left' \
     data.return_raw_chat=True \
@@ -66,6 +66,7 @@ python3 -m verl.trainer.main_rso_opsd \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$TP \
     actor_rollout_ref.rollout.name=$ENGINE \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
+    actor_rollout_ref.rollout.max_num_batched_tokens=12288 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
