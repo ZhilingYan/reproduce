@@ -16,3 +16,4 @@
 from .textcraft_synth import *
 
 from .sciworld import *
+from .search import *
