@@ -1,7 +1,35 @@
 {
   "skill_files": {
-    "general_skills": "general_skills.md"
+    "general_skills": "general_skills.md",
+    "state_change": "state_change.md",
+    "find": "find.md",
+    "grow": "grow.md",
+    "chemistry": "chemistry.md",
+    "measure_melt": "measure_melt.md",
+    "thermometer": "thermometer.md",
+    "conductivity": "conductivity.md",
+    "electricity": "electricity.md",
+    "lifespan": "lifespan.md",
+    "life_stages": "life_stages.md",
+    "inclined_plane": "inclined_plane.md",
+    "genetics": "genetics.md"
   },
-  "task_to_skill": {},
+  "task_to_skill": {
+    "measure-melting-point": "measure_melt",
+    "identify-life-stages": "life_stages",
+    "chemistry-mix": "chemistry",
+    "test-conductivity": "conductivity",
+    "power-component": "electricity",
+    "inclined-plane": "inclined_plane",
+    "mendelian-genetics": "genetics",
+    "use-thermometer": "thermometer",
+    "lifespan": "lifespan",
+    "grow-": "grow",
+    "find-": "find",
+    "boil": "state_change",
+    "melt": "state_change",
+    "freeze": "state_change",
+    "change-the-state-of-matter-of": "state_change"
+  },
   "task_keywords": {}
 }

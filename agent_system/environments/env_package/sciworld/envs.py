@@ -213,6 +213,9 @@ class SciWorldEnvs:
               focus_death: bool = False) -> Dict[str, Any]:
         info = {
             "extra.task": slot.task,
+            # skill 特权分发通道:SkillProvider.get_privileged_info 按 task_to_skill 键
+            # 对 gamefile 做子串匹配(alfworld 同款;rlsd_ray_trainer.py:154-160)
+            "extra.gamefile": slot.task,
             "extra.variation": slot.variation,
             "extra.task_desc": slot.task_desc,
             "extra.observation": slot.last_obs,

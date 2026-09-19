@@ -65,7 +65,7 @@ python examples/data_preprocess/make_sciworld_test_parquet.py    # 官方 test �
 |---|---|---|---|---|
 | 1 | GRPO | `run_synth_grpo_8gpu.sh` | `run_search_grpo_8gpu.sh` | `run_sciworld_grpo_8gpu.sh` |
 | 2 | GRPO + GT-OPSD | `run_synth_gtopsd_8gpu.sh` | `run_search_gtopsd_8gpu.sh` | `run_sciworld_gtopsd_8gpu.sh` |
-| 3 | SDAR(技能库特权) | `run_synth_skill_8gpu.sh` | —(技能库仅 textcraft) | —(同左) |
+| 3 | SDAR(技能库特权) | `run_synth_skill_8gpu.sh` | `run_search_skill_8gpu.sh` | `run_sciworld_skill_8gpu.sh` |
 | 4 | RSO(递归) | `run_synth_rso_8gpu.sh` | `run_search_rso_8gpu.sh` | `run_sciworld_rso_8gpu.sh` |
 | 5 | RSO+OPSD(递归) | `run_synth_rso_opsd_8gpu.sh` | `run_search_rso_opsd_8gpu.sh` | `run_sciworld_rso_opsd_8gpu.sh` |
 
