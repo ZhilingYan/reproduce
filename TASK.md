@@ -7,7 +7,7 @@
 | 代号 | `MODEL=` | 说明 |
 |---|---|---|
 | qwen3-4b | `Qwen/Qwen3-4B-Instruct-2507` | 仓库 pin 的环境直接用 |
-| gemma-2b | `google/gemma-2-2b` | 仓库 pin 的环境直接用 |
+| gemma-2b | `google/gemma-4-E2B` | 需单独环境:transformers ≥ 5.x + 支持 gemma-4 的近期 vllm |
 | gemma-26b | `google/gemma-4-26B-A4B-it` | 需单独环境:transformers ≥ 5.x + 支持 gemma-4 的近期 vllm;建议 TP=4、MICRO_BSZ=1 |
 
 ## 实验名 = bash 参数
