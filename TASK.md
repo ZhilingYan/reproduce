@@ -7,8 +7,8 @@
 | 代号 | `MODEL=` | 说明 |
 |---|---|---|
 | qwen3-4b | `Qwen/Qwen3-4B-Instruct-2507` | 仓库 pin 的环境直接用 |
-| gemma-4b | `google/gemma-4-E4B-it` | 需单独环境:transformers ≥ 5.x + 支持 gemma-4 的近期 vllm |
-| gemma-26b | gemma-4 26B 对应 HF id(以你环境为准) | 同上单独环境;建议 TP=4、MICRO_BSZ=1 |
+| gemma-2b | `google/gemma-2-2b` | 仓库 pin 的环境直接用 |
+| gemma-26b | `google/gemma-4-26B-A4B-it` | 需单独环境:transformers ≥ 5.x + 支持 gemma-4 的近期 vllm;建议 TP=4、MICRO_BSZ=1 |
 
 ## 实验名 = bash 参数
 
@@ -23,23 +23,23 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
 
 ### 1. TextCraft(训练 + 测评;在跑的照旧跑完,缺的补齐——第 3 块要用这五个方法的 ckpt)
 
-| 方法 | qwen3-4b | gemma-4b | gemma-26b |
+| 方法 | qwen3-4b | gemma-2b | gemma-26b |
 |---|---|---|---|
-| grpo | qwen3-4b_textcraft_grpo | gemma-4b_textcraft_grpo | gemma-26b_textcraft_grpo |
-| gtopsd | qwen3-4b_textcraft_gtopsd | gemma-4b_textcraft_gtopsd | gemma-26b_textcraft_gtopsd |
-| skill | qwen3-4b_textcraft_skill | gemma-4b_textcraft_skill | gemma-26b_textcraft_skill |
-| rso | qwen3-4b_textcraft_rso | gemma-4b_textcraft_rso | gemma-26b_textcraft_rso |
-| rso_opsd | qwen3-4b_textcraft_rso_opsd | gemma-4b_textcraft_rso_opsd | gemma-26b_textcraft_rso_opsd |
+| grpo | qwen3-4b_textcraft_grpo | gemma-2b_textcraft_grpo | gemma-26b_textcraft_grpo |
+| gtopsd | qwen3-4b_textcraft_gtopsd | gemma-2b_textcraft_gtopsd | gemma-26b_textcraft_gtopsd |
+| skill | qwen3-4b_textcraft_skill | gemma-2b_textcraft_skill | gemma-26b_textcraft_skill |
+| rso | qwen3-4b_textcraft_rso | gemma-2b_textcraft_rso | gemma-26b_textcraft_rso |
+| rso_opsd | qwen3-4b_textcraft_rso_opsd | gemma-2b_textcraft_rso_opsd | gemma-26b_textcraft_rso_opsd |
 
 ### 2. Search-QA(训练 2wiki+musique;全量测评 2wiki+musique+hotpotqa(OOD),README §四 val_only 配方;先起检索服务)
 
-| 方法 | qwen3-4b | gemma-4b | gemma-26b |
+| 方法 | qwen3-4b | gemma-2b | gemma-26b |
 |---|---|---|---|
-| grpo | qwen3-4b_searchqa_grpo | gemma-4b_searchqa_grpo | gemma-26b_searchqa_grpo |
-| gtopsd | qwen3-4b_searchqa_gtopsd | gemma-4b_searchqa_gtopsd | gemma-26b_searchqa_gtopsd |
-| skill | qwen3-4b_searchqa_skill | gemma-4b_searchqa_skill | gemma-26b_searchqa_skill |
-| rso | qwen3-4b_searchqa_rso | gemma-4b_searchqa_rso | gemma-26b_searchqa_rso |
-| rso_opsd | qwen3-4b_searchqa_rso_opsd | gemma-4b_searchqa_rso_opsd | gemma-26b_searchqa_rso_opsd |
+| grpo | qwen3-4b_searchqa_grpo | gemma-2b_searchqa_grpo | gemma-26b_searchqa_grpo |
+| gtopsd | qwen3-4b_searchqa_gtopsd | gemma-2b_searchqa_gtopsd | gemma-26b_searchqa_gtopsd |
+| skill | qwen3-4b_searchqa_skill | gemma-2b_searchqa_skill | gemma-26b_searchqa_skill |
+| rso | qwen3-4b_searchqa_rso | gemma-2b_searchqa_rso | gemma-26b_searchqa_rso |
+| rso_opsd | qwen3-4b_searchqa_rso_opsd | gemma-2b_searchqa_rso_opsd | gemma-26b_searchqa_rso_opsd |
 
 ### 3. ScienceWorld-OOD(仅 inference,无训练:第 1 块的 TextCraft ckpt 直接迁移到 sciworld 官方 test 1,819 变体)
 
@@ -49,23 +49,23 @@ NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/global_step_150/actor/huggingfa
   data.val_files=$HOME/data/sciworld/test.parquet data.val_batch_size=128 trainer.val_only=True
 ```
 
-| 方法 | qwen3-4b | gemma-4b | gemma-26b |
+| 方法 | qwen3-4b | gemma-2b | gemma-26b |
 |---|---|---|---|
-| grpo | qwen3-4b_sciworld_ood_grpo | gemma-4b_sciworld_ood_grpo | gemma-26b_sciworld_ood_grpo |
-| gtopsd | qwen3-4b_sciworld_ood_gtopsd | gemma-4b_sciworld_ood_gtopsd | gemma-26b_sciworld_ood_gtopsd |
-| skill | qwen3-4b_sciworld_ood_skill | gemma-4b_sciworld_ood_skill | gemma-26b_sciworld_ood_skill |
-| rso | qwen3-4b_sciworld_ood_rso | gemma-4b_sciworld_ood_rso | gemma-26b_sciworld_ood_rso |
-| rso_opsd | qwen3-4b_sciworld_ood_rso_opsd | gemma-4b_sciworld_ood_rso_opsd | gemma-26b_sciworld_ood_rso_opsd |
+| grpo | qwen3-4b_sciworld_ood_grpo | gemma-2b_sciworld_ood_grpo | gemma-26b_sciworld_ood_grpo |
+| gtopsd | qwen3-4b_sciworld_ood_gtopsd | gemma-2b_sciworld_ood_gtopsd | gemma-26b_sciworld_ood_gtopsd |
+| skill | qwen3-4b_sciworld_ood_skill | gemma-2b_sciworld_ood_skill | gemma-26b_sciworld_ood_skill |
+| rso | qwen3-4b_sciworld_ood_rso | gemma-2b_sciworld_ood_rso | gemma-26b_sciworld_ood_rso |
+| rso_opsd | qwen3-4b_sciworld_ood_rso_opsd | gemma-2b_sciworld_ood_rso_opsd | gemma-26b_sciworld_ood_rso_opsd |
 
 ### 4. ScienceWorld(训练 + 测评;java 11+、主机内存 ≥240G;测评 = README §四 val_only,MODEL 换本块 ckpt)
 
-| 方法 | qwen3-4b | gemma-4b | gemma-26b |
+| 方法 | qwen3-4b | gemma-2b | gemma-26b |
 |---|---|---|---|
-| grpo | qwen3-4b_sciworld_grpo | gemma-4b_sciworld_grpo | gemma-26b_sciworld_grpo |
-| gtopsd | qwen3-4b_sciworld_gtopsd | gemma-4b_sciworld_gtopsd | gemma-26b_sciworld_gtopsd |
-| skill | qwen3-4b_sciworld_skill | gemma-4b_sciworld_skill | gemma-26b_sciworld_skill |
-| rso | qwen3-4b_sciworld_rso | gemma-4b_sciworld_rso | gemma-26b_sciworld_rso |
-| rso_opsd | qwen3-4b_sciworld_rso_opsd | gemma-4b_sciworld_rso_opsd | gemma-26b_sciworld_rso_opsd |
+| grpo | qwen3-4b_sciworld_grpo | gemma-2b_sciworld_grpo | gemma-26b_sciworld_grpo |
+| gtopsd | qwen3-4b_sciworld_gtopsd | gemma-2b_sciworld_gtopsd | gemma-26b_sciworld_gtopsd |
+| skill | qwen3-4b_sciworld_skill | gemma-2b_sciworld_skill | gemma-26b_sciworld_skill |
+| rso | qwen3-4b_sciworld_rso | gemma-2b_sciworld_rso | gemma-26b_sciworld_rso |
+| rso_opsd | qwen3-4b_sciworld_rso_opsd | gemma-2b_sciworld_rso_opsd | gemma-26b_sciworld_rso_opsd |
 
 前 5 步健康检查(所有训练 run):`episode/valid_action_ratio` > 0.9;递归另看 `rso/delegating_trees` > 0、`rso/G_negative_ratio` ≡ 0;异常即停排查。
 
