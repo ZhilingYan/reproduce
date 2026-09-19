@@ -7,7 +7,7 @@ set -x
 #   ①数据换 MuSiQue+2Wiki 训练集 + val_sub(三源×15)验证;
 #   ②+algorithm.sdar.privileged_source=gt(teacher 的特权 = 本题标准答案,
 #     经 search env 的 info['extra.gt_plan'] 通道逐行注入);
-#   ③test_freq=5 / save_freq=10 + 保留 2 个 ckpt;推理标签 <thought>(prompts/search.py,
+#   ③test_freq=5 / save_freq=5 + 保留 2 个 ckpt(2026-09-20 审核批注);推理标签 <thought>(prompts/search.py,
 #     Qwen3 词表里 <think> 是特殊 token,模型会无视该推理指令,探针 22191832)。
 #
 # 可调环境变量:MODEL(默认 Qwen3-4B-Instruct-2507)/ MICRO_BSZ(默认 16)/ TP(默认 1)/
@@ -16,7 +16,7 @@ set -x
 ENGINE=${ENGINE:-vllm}
 MODEL=${MODEL:-Qwen/Qwen3-4B-Instruct-2507}
 MICRO_BSZ=${MICRO_BSZ:-16}
-TP=${TP:-1}
+TP=${TP:-2}
 OUT=${OUT:-$HOME/rso_runs/search_gtopsd}
 DATA_DIR=${DATA_DIR:-$HOME/data/searchR1_musique_2wiki}
 SEARCH_URL=${SEARCH_URL:-http://0.0.0.0:8000/retrieve}
@@ -79,9 +79,9 @@ python3 -m verl.trainer.main_sdar \
     trainer.n_gpus_per_node=8 \
     trainer.ray_wait_register_center_timeout=600 \
     trainer.nnodes=1 \
-    trainer.save_freq=10 \
+    trainer.save_freq=5 \
     +trainer.max_actor_ckpt_to_keep=2 \
     trainer.test_freq=5 \
-    trainer.total_training_steps=150 \
+    trainer.total_epochs=150 \
     trainer.default_local_dir=$OUT/ckpts \
     trainer.val_before_train=True $@

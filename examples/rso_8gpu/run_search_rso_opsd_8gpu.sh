@@ -42,7 +42,7 @@ python3 -m verl.trainer.main_rso_opsd_search \
     +algorithm.rso.progress_baseline_loo=True \
     +algorithm.rso.invalid_coef=0.1 \
     +algorithm.rso_opsd.gate_beta=2.5 \
-    +algorithm.rso_opsd.lambda_coef=0.01 \
+    +algorithm.rso_opsd.lambda_coef=0.001 \
     "+algorithm.rso_opsd.act_tags=[search,answer,delegate]" \
     data.train_files=$DATA_DIR/train.parquet \
     data.val_files=$DATA_DIR/val_sub.parquet \
@@ -59,7 +59,7 @@ python3 -m verl.trainer.main_rso_opsd_search \
     actor_rollout_ref.actor.ppo_mini_batch_size=256 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=$MICRO_BSZ \
     actor_rollout_ref.actor.use_kl_loss=True \
-    actor_rollout_ref.actor.kl_loss_coef=0.01 \
+    actor_rollout_ref.actor.kl_loss_coef=0.001 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.actor.entropy_coeff=0 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
@@ -84,7 +84,7 @@ python3 -m verl.trainer.main_rso_opsd_search \
     env.history_length=4 \
     env.rollout.n=8 \
     +env.rao.per_agent_max_steps=25 \
-    +env.rao.max_depth=6 \
+    +env.rao.max_depth=4 \
     +env.search_rso.decomp_path=$DATA_DIR/decomp_store.json \
     env.search.search_url=$SEARCH_URL \
     env.search.topk=3 \
@@ -99,7 +99,7 @@ python3 -m verl.trainer.main_rso_opsd_search \
     trainer.save_freq=5 \
     +trainer.max_actor_ckpt_to_keep=2 \
     trainer.test_freq=5 \
-    trainer.total_training_steps=150 \
+    trainer.total_epochs=150 \
     trainer.rollout_data_dir=$OUT/rollouts \
     trainer.default_local_dir=$OUT/ckpts \
     trainer.val_before_train=True $TRACE_ARG $@

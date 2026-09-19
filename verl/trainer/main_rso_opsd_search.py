@@ -51,7 +51,8 @@ def validate_rso_opsd_search_config(config) -> None:
     assert bool(config.actor_rollout_ref.actor.get("use_kl_loss", False)), (
         "[RSO+OPSD/search] 必须 actor.use_kl_loss=True(§一点五 底座)")
     kl_coef = float(config.actor_rollout_ref.actor.get("kl_loss_coef", 0.0))
-    assert kl_coef == 0.01, f"[RSO+OPSD/search] kl_loss_coef 必须是 0.01,收到 {kl_coef}"
+    # 2026-09-20 审核批注:search 域 flat/rec 统一 0.001(SDAR search 原口径),不再沿 §一点五 的 0.01
+    assert kl_coef == 0.001, f"[RSO+OPSD/search] kl_loss_coef 必须是 0.001(审核批注 2026-09-20),收到 {kl_coef}"
     kl_type = str(config.actor_rollout_ref.actor.get("kl_loss_type", ""))
     assert kl_type == "low_var_kl", f"[RSO+OPSD/search] kl_loss_type 必须是 low_var_kl,收到 {kl_type!r}"
     # ---- 换 1:search 域环境断言
