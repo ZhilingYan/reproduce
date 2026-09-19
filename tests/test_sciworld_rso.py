@@ -187,6 +187,23 @@ def test_envs_semantics():
     o, r, d, i4 = envs.step(["look around", "", "", ""])
     assert d[0] and i4[0]["extra.last_action_kind"] == "post_done"      # 死后不进 env
 
+    # case 指定模式(官方 test 全量评测通道):env_kwargs 逐行加载,槽数自动收缩
+    kw = build_sciworld_envs(seed=0, env_num=4, group_n=1, is_train=False,
+                             env_config=_env_config(), env_factory=FakeSciWorldEnv)
+    kobs, kinfos = kw.reset(kwargs=[{"task": "melt", "variation": 21},
+                                    {"task": "boil", "variation": 3},
+                                    {"task": "freeze", "variation": 7}])
+    assert len(kobs) == 3
+    assert [(i["extra.task"], i["extra.variation"]) for i in kinfos] == \
+           [("melt", 21), ("boil", 3), ("freeze", 7)]
+    ko, kr, kd, ki = kw.step(["look around", "", "activate stove"])
+    assert len(ko) == 3 and ki[2]["extra.score"] == 20
+    # stage 桥接(递归管理器路径):暂存后无参 reset 消费
+    kw.stage_reset_kwargs([{"task": "grow-plant", "variation": 9}])
+    sobs, sinfos = kw.reset()
+    assert len(sobs) == 1 and sinfos[0]["extra.task"] == "grow-plant"
+    kw.close()
+
     # val:固定 50 case,前 30 槽 = 30 任务的 dev[0]
     val = build_sciworld_envs(seed=1, env_num=50, group_n=1, is_train=False,
                               env_config=_env_config(), env_factory=FakeSciWorldEnv)

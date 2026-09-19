@@ -28,7 +28,10 @@ from agent_system.recursive.orchestrator import RecursiveEnvironmentManager
 class SciWorldRecursiveEnvironmentManager(RecursiveEnvironmentManager):
 
     def reset(self, kwargs=None):
-        # 任务由环境自采(env_manager.py textcraft 分支同款),数据集 kwargs 忽略
+        # 任务缺省由环境自采;若数据集带 env_kwargs(官方 test 全量评测)则暂存进底层
+        # 环境按行加载(search_rso 的 stage 桥接同款;kwargs 可能是 numpy 对象数组,
+        # 底层已显式判 None,不做真值判断)
+        self.envs.stage_reset_kwargs(kwargs)
         return super().reset()
 
     def step(self, text_actions: List[str]):

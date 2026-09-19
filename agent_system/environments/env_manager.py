@@ -749,9 +749,10 @@ class SciWorldEnvironmentManager(EnvironmentManagerBase):
         super().__init__(envs, projection_f, config)
 
     def reset(self, kwargs) -> Dict[str, Any]:
-        # 任务由环境自采(官方 train 划分任务均匀采样;val = 固定 50 case),
-        # 数据集 kwargs 忽略(假 parquet 只驱动批次)
-        obs, infos = self.envs.reset()
+        # 任务缺省由环境自采(官方 train 划分任务均匀采样;val = 固定 50 dev case),
+        # 假 parquet 只驱动批次;若数据集带 env_kwargs({"task","variation"} 逐行),
+        # 则按行加载——官方 test 全量评测(make_sciworld_test_parquet.py + val_only)走这条
+        obs, infos = self.envs.reset(kwargs=kwargs)
         self.task_obs = [f"Task: {info.get('extra.task_desc', '')}" for info in infos]
         self.admissible = [str(info.get('extra.admissible', '')) for info in infos]
         self.pre_step_obs = list(obs)          # 初始 look / 之后为上一步执行结果

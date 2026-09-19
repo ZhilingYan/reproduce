@@ -165,8 +165,28 @@ class SciWorldEnvs:
         slot.gt_plan = render_gt_plan(parse_goal_progress(gp))
         return slot.last_obs, self._info(slot, kind="reset")
 
-    def reset(self):
-        if self.is_train:
+    # ------------------------------------------------------------ 桥接(递归管理器用,search_rso 同款)
+    def stage_reset_kwargs(self, kwargs):
+        # 注意 kwargs 可能是 numpy 对象数组——严禁 or/if 真值判断(已修坑②),显式判 None
+        self._staged_kwargs = list(kwargs) if kwargs is not None else []
+
+    def reset(self, kwargs=None):
+        """三种模式(2026-09-19 加 case 指定模式,供官方 test 全量评测走训练框架):
+        ① kwargs 逐行含 {"task","variation"} → 按行加载,只激活前 len(kwargs) 个槽
+           (env_kwargs 经数据集 parquet 下发,search 域同款通道;分批评测时
+           余数 batch 槽数自动缩,JVM 池按 val_batch_size 复用);
+        ② is_train → 官方 train 划分任务均匀采样(组内同 case);
+        ③ 否则 → 固定 50 dev case(训练中验证)。"""
+        if kwargs is None:
+            kwargs = getattr(self, "_staged_kwargs", None)
+            self._staged_kwargs = None
+        kw_list = list(kwargs) if kwargs is not None else []
+        kw_list = [k for k in kw_list if isinstance(k, dict) and "task" in k]
+        if kw_list:
+            assert len(kw_list) <= self.batch_size, (
+                f"[sciworld] env_kwargs {len(kw_list)} 条超过槽数 {self.batch_size}")
+            cases = [(str(k["task"]), int(k["variation"])) for k in kw_list]
+        elif self.is_train:
             group_cases = self._sample_train_cases()
             cases = [group_cases[i // self.group_n] for i in range(self.batch_size)]
         else:
@@ -174,8 +194,9 @@ class SciWorldEnvs:
             assert self.batch_size <= len(fixed) or self.group_n == 1, \
                 f"[sciworld] val 槽数 {self.batch_size} 超过固定 case 数 {len(fixed)}"
             cases = [fixed[i % len(fixed)] for i in range(self.batch_size)]
+        self._active = len(cases)
         futures = [self._executor.submit(self._reset_one, s, t, v)
-                   for s, (t, v) in zip(self._slots, cases)]
+                   for s, (t, v) in zip(self._slots[: self._active], cases)]
         results = [f.result() for f in futures]
         obs, infos = map(list, zip(*results))
         return obs, infos
@@ -241,10 +262,11 @@ class SciWorldEnvs:
             slot, kind="env", unmatched=unmatched, focus_death=focus_death)
 
     def step(self, actions: List[str]):
-        assert len(actions) == len(self._slots), \
-            f"[sciworld] step 收到 {len(actions)} 条动作,槽数 {len(self._slots)}"
+        active = getattr(self, "_active", self.batch_size)
+        assert len(actions) == active, \
+            f"[sciworld] step 收到 {len(actions)} 条动作,活跃槽数 {active}"
         futures = [self._executor.submit(self._one, s, a)
-                   for s, a in zip(self._slots, actions)]
+                   for s, a in zip(self._slots[:active], actions)]
         results = [f.result() for f in futures]
         obs, rewards, dones, infos = map(list, zip(*results))
         return obs, rewards, dones, infos
