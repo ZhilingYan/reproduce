@@ -29,7 +29,7 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
 |---|---|---|---|
 | rso_opsd | qwen3-4b_textcraft_rso_opsd **(DONE)** | gemma-2b_textcraft_rso_opsd **(DONE)** | gemma-26b_textcraft_rso_opsd **(DONE)** |
 | rso | qwen3-4b_textcraft_rso **(DONE)** | gemma-2b_textcraft_rso **(DONE)** | gemma-26b_textcraft_rso **(DONE)** |
-| rao | qwen3-4b_textcraft_rao | gemma-2b_textcraft_rao | gemma-26b_textcraft_rao |
+| rao | qwen3-4b_textcraft_rao | gemma-2b_textcraft_rao **(DONE)**  | gemma-26b_textcraft_rao **(DONE)**  |
 | skill | qwen3-4b_textcraft_skill **(DONE)** | gemma-2b_textcraft_skill **(DONE)** | gemma-26b_textcraft_skill **(DONE)** |
 | gtopsd | qwen3-4b_textcraft_gtopsd **(DONE)** | gemma-2b_textcraft_gtopsd **(DONE)** | gemma-26b_textcraft_gtopsd **(DONE)** |
 | grpo | qwen3-4b_textcraft_grpo **(DONE)** | gemma-2b_textcraft_grpo **(DONE)** | gemma-26b_textcraft_grpo **(DONE)** |
@@ -57,7 +57,7 @@ NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/global_step_150/actor/huggingfa
 |---|---|---|---|
 | rso_opsd | qwen3-4b_sciworld_ood_rso_opsd | gemma-2b_sciworld_ood_rso_opsd **(ONGOING)** | gemma-26b_sciworld_ood_rso_opsd **(ONGOING)** |
 | rso | qwen3-4b_sciworld_ood_rso | gemma-2b_sciworld_ood_rso **(ONGOING)** | gemma-26b_sciworld_ood_rso **(ONGOING)** |
-| rao | qwen3-4b_sciworld_ood_rao | gemma-2b_sciworld_ood_rao | gemma-26b_sciworld_ood_rao |
+| rao | qwen3-4b_sciworld_ood_rao | gemma-2b_sciworld_ood_rao **(ONGOING)**  | gemma-26b_sciworld_ood_rao **(ONGOING)**  |
 | skill | qwen3-4b_sciworld_ood_skill | gemma-2b_sciworld_ood_skill **(ONGOING)** | gemma-26b_sciworld_ood_skill **(ONGOING)** |
 | gtopsd | qwen3-4b_sciworld_ood_gtopsd | gemma-2b_sciworld_ood_gtopsd **(ONGOING)** | gemma-26b_sciworld_ood_gtopsd **(ONGOING)** |
 | grpo | qwen3-4b_sciworld_ood_grpo | gemma-2b_sciworld_ood_grpo **(ONGOING)** | gemma-26b_sciworld_ood_grpo **(ONGOING)** |
