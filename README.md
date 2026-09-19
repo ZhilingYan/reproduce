@@ -63,10 +63,10 @@ python examples/data_preprocess/make_sciworld_test_parquet.py    # 官方 test �
 
 | # | 方法 | TextCraft-Synth | Search-QA | ScienceWorld |
 |---|---|---|---|---|
-| 1 | GRPO | `run_synth_grpo_8gpu.sh` | — | — |
+| 1 | GRPO | `run_synth_grpo_8gpu.sh` | `run_search_grpo_8gpu.sh` | `run_sciworld_grpo_8gpu.sh` |
 | 2 | GRPO + GT-OPSD | `run_synth_gtopsd_8gpu.sh` | `run_search_gtopsd_8gpu.sh` | `run_sciworld_gtopsd_8gpu.sh` |
-| 3 | SDAR(技能库特权) | `run_synth_skill_8gpu.sh` | — | — |
-| 4 | RSO(递归) | `run_synth_rso_8gpu.sh` | — | — |
+| 3 | SDAR(技能库特权) | `run_synth_skill_8gpu.sh` | —(技能库仅 textcraft) | —(同左) |
+| 4 | RSO(递归) | `run_synth_rso_8gpu.sh` | `run_search_rso_8gpu.sh` | `run_sciworld_rso_8gpu.sh` |
 | 5 | RSO+OPSD(递归) | `run_synth_rso_opsd_8gpu.sh` | `run_search_rso_opsd_8gpu.sh` | `run_sciworld_rso_opsd_8gpu.sh` |
 
 脚本都在 `examples/rso_8gpu/`;可调的只有 `MODEL / TP / MICRO_BSZ / OUT`(递归另有 `TRACE`),
@@ -137,6 +137,23 @@ MODEL=<ckpt_hf_dir> bash examples/rso_8gpu/run_sciworld_gtopsd_8gpu.sh \
 
 指标:官方分(负分裁零)per-task 分桶 + main / sudden_death 宏平均;JVM 池 = val_batch_size,
 分批复用,余数 batch 自动收缩。
+
+## 五、参考基线结果(TextCraft-Synth)
+
+Qwen3-4B-Instruct-2507 **未训练基座**,max_steps=2000(旧口径实测)/ temperature=0 / 全量 632 题。
+注意:flat 现行口径 max_steps=500 下 medium/hard 的数值会低于此表(表中 medium 平均 303 轮、
+hard 1018 轮,500 步会截断一部分),仅作环境正确性参照:
+
+| 难度 | 题数 | 成功率 | 平均轮数 |
+|---|---|---|---|
+| easy | 147 | 0.898 | 62 |
+| medium | 213 | 0.432 | 303 |
+| hard | 136 | 0.007 | 1018 |
+| extreme | 136 | 0.000 | 950 |
+| easy+medium | 360 | 0.622 | |
+| **全部** | **632** | **0.356** | |
+
+换模型后数值会不同,但 medium 显著非零是环境正常的标志;flat 方法在 hard/extreme 接近 0 属预期(平铺方法的能力上限)。
 
 ## License
 
