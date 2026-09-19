@@ -99,7 +99,7 @@ python3 -m verl.trainer.main_rso_opsd_search \
     trainer.save_freq=5 \
     +trainer.max_actor_ckpt_to_keep=2 \
     trainer.test_freq=5 \
-    trainer.total_epochs=150 \
+    trainer.total_training_steps=150 \
     trainer.rollout_data_dir=$OUT/rollouts \
     trainer.default_local_dir=$OUT/ckpts \
     trainer.val_before_train=True $TRACE_ARG $@
