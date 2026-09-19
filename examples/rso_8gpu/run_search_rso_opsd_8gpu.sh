@@ -2,7 +2,7 @@ set -x
 # ============================================================================
 # RSO / Search-QA — RSO+OPSD(递归委托 + 节点局部特权蒸馏)  (8 GPU 版)
 # ============================================================================
-# 训练集 = MuSiQue + 2Wiki(examples/data_preprocess 三个脚本生成,见 README_SEARCH.md);
+# 训练集 = MuSiQue + 2Wiki(examples/data_preprocess 三个脚本生成,见 README.md §二);
 # 训练中验证 = val_sub.parquet(musique/2wiki/hotpotqa 三源各 15 条固定 case);检索走本地 e5 服务(SEARCH_URL)。
 # 参数口径 = 2026-09-19 审核定稿的参数表(Ideation/flat参数对照_textcraft_vs_searchqa.md):
 #   batch 128×组8 / mini 256 / micro 16 / logprob 32 / TP2 / KL 0.01 low_var / 熵 0 /
