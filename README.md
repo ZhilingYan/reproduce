@@ -123,10 +123,10 @@ python scripts_rso/eval_full_val.py \
 
 ### Search-QA(test_3src.parquet,22,398 题 = musique 2,417 + 2wiki 12,576 + hotpotqa 7,405)
 
-训练同款脚本 + 三项覆盖(ckpt 用 `MODEL=<ckpt>/best/actor/huggingface`(val 最优;旧策略产物无 best 软链时用最终 global_step_*)):
+训练同款脚本 + 三项覆盖,**一律基于 val 最优 ckpt**(`<OUT>/ckpts/best`;旧策略产物无 best 软链时用最终 `global_step_*`):
 
 ```bash
-MODEL=<ckpt_hf_dir> bash examples/rso_8gpu/run_search_gtopsd_8gpu.sh \
+MODEL=<OUT>/ckpts/best/actor/huggingface bash examples/rso_8gpu/run_search_gtopsd_8gpu.sh \
   data.val_files=$HOME/data/searchR1_processed_direct/test_3src.parquet \
   data.val_batch_size=512 trainer.val_only=True
 # 递归同理换 run_search_rso_opsd_8gpu.sh
@@ -135,7 +135,7 @@ MODEL=<ckpt_hf_dir> bash examples/rso_8gpu/run_search_gtopsd_8gpu.sh \
 ### ScienceWorld(test.parquet,官方 test 划分 1,819 变体)
 
 ```bash
-MODEL=<ckpt_hf_dir> bash examples/rso_8gpu/run_sciworld_gtopsd_8gpu.sh \
+MODEL=<OUT>/ckpts/best/actor/huggingface bash examples/rso_8gpu/run_sciworld_gtopsd_8gpu.sh \
   data.val_files=$HOME/data/sciworld/test.parquet \
   data.val_batch_size=128 trainer.val_only=True
 # 递归同理换 run_sciworld_rso_opsd_8gpu.sh

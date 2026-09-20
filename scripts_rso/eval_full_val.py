@@ -17,7 +17,7 @@
 用法:
   # 评测训练后的 checkpoint
   python scripts_rso/eval_full_val.py \
-      --model $HOME/rso_runs/qwen_grpo/ckpts/global_step_150/actor/huggingface \
+      --model $HOME/rso_runs/qwen_grpo/ckpts/best/actor/huggingface \
       --out   $HOME/rso_runs/qwen_grpo/eval_full
 
   # 评测基座模型(训练前基线)

@@ -48,7 +48,8 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
 ### 3. ScienceWorld-OOD(仅 inference,无训练:第 1 块的 TextCraft ckpt 直接迁移到 sciworld 官方 test 1,819 变体)
 
 ```bash
-NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/best/actor/huggingface   # 旧策略产物无 best 软链时用 global_step_150 OUT=$HOME/rso_runs/$NAME \
+# textcraft ckpt 一律用 val 最优:<ckpt>/best/actor/huggingface(旧策略产物无 best 软链时用 global_step_150)
+NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/best/actor/huggingface OUT=$HOME/rso_runs/$NAME \
   bash examples/rso_8gpu/run_sciworld_<方法>_8gpu.sh trainer.experiment_name=$NAME \
   data.val_files=$HOME/data/sciworld/test.parquet data.val_batch_size=128 trainer.val_only=True
 ```
