@@ -35,17 +35,19 @@ bash data/searchqa/install.sh   # 落位到脚本缺省路径:train 34,938 / val
                                 # decomp_store.json / test_3src 22,398(全量测评集)
 ```
 
-检索服务仍需自建(wiki-18 语料 + e5 索引,约 75GB,不随仓;Search-R1 官方流程):
+检索资产(wiki-18 语料 + e5 索引,约 75GB)**从本仓 GitHub Release 获取**
+(切片 ≤1.9G + sha256 校验,脚本自动重组;无需访问 HuggingFace):
 
 ```bash
 conda create -n retriever python=3.10 -y && conda activate retriever
 conda install numpy==1.26.4 && pip install torch transformers datasets pyserini huggingface_hub uvicorn fastapi
 conda install faiss-gpu==1.8.0 -c pytorch -c nvidia -y   # H200/sm90 需 faiss-cpu
-local_dir=~/data/searchR1
-python examples/search/searchr1_download.py --local_dir $local_dir
-cat $local_dir/part_* > $local_dir/e5_Flat.index && gzip -d $local_dir/wiki-18.jsonl.gz
+bash examples/search/fetch_retrieval_from_release.sh      # → ~/data/searchR1/{e5_Flat.index, wiki-18.jsonl}
 bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log &   # http://0.0.0.0:8000/retrieve
 ```
+
+(能访问 HF 的也可走原始源:`python examples/search/searchr1_download.py --local_dir ~/data/searchR1`
+后 `cat part_* > e5_Flat.index && gzip -d wiki-18.jsonl.gz`,与 Release 内容逐字节一致。)
 
 从源复现(可选,产物与随仓数据一致)——数据原料:`$MUSIQUE_RAW` = MuSiQue 官方数据(github.com/StonyBrookNLP/musique 同源:
 `pip install gdown && gdown 1tGdADlNjWFaHLeZZGShh2IRcpO6Lv24h -O musique_v1.0.zip && unzip musique_v1.0.zip -d ~/data/musique_official`;
