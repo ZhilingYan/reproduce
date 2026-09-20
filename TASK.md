@@ -29,7 +29,6 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
 
 | 方法 | qwen3-4b | gemma-2b | gemma-26b |
 |---|---|---|---|
-| rso_opsd | qwen3-4b_textcraft_rso_opsd **(DONE)** | gemma-2b_textcraft_rso_opsd **(DONE)** | gemma-26b_textcraft_rso_opsd **(DONE)** |
 | rso | qwen3-4b_textcraft_rso **(DONE)** | gemma-2b_textcraft_rso **(DONE)** | gemma-26b_textcraft_rso **(DONE)** |
 | rao | qwen3-4b_textcraft_rao | gemma-2b_textcraft_rao **(DONE)**  | gemma-26b_textcraft_rao **(DONE)**  |
 | skill | qwen3-4b_textcraft_skill **(DONE)** | gemma-2b_textcraft_skill **(DONE)** | gemma-26b_textcraft_skill **(DONE)** |
@@ -40,8 +39,7 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
 
 | 方法 | qwen3-4b | gemma-2b | gemma-26b |
 |---|---|---|---|
-| rso_opsd | qwen3-4b_searchqa_rso_opsd | gemma-2b_searchqa_rso_opsd **(ONGOING)** | gemma-26b_searchqa_rso_opsd **(ONGOING)** |
-| rso | qwen3-4b_searchqa_rso | gemma-2b_searchqa_rso | gemma-26b_searchqa_rso |
+| rso | qwen3-4b_searchqa_rso | gemma-2b_searchqa_rso **(ONGOING)** | gemma-26b_searchqa_rso **(ONGOING)** |
 | rao | qwen3-4b_searchqa_rao | gemma-2b_searchqa_rao | gemma-26b_searchqa_rao |
 | skill | qwen3-4b_searchqa_skill | gemma-2b_searchqa_skill | gemma-26b_searchqa_skill |
 | gtopsd | qwen3-4b_searchqa_gtopsd | gemma-2b_searchqa_gtopsd | gemma-26b_searchqa_gtopsd |
@@ -50,30 +48,30 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
 ### 3. ScienceWorld-OOD(仅 inference,无训练:第 1 块的 TextCraft ckpt 直接迁移到 sciworld 官方 test 1,819 变体)
 
 ```bash
-NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/global_step_150/actor/huggingface OUT=$HOME/rso_runs/$NAME \
+NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/best/actor/huggingface   # 旧策略产物无 best 软链时用 global_step_150 OUT=$HOME/rso_runs/$NAME \
   bash examples/rso_8gpu/run_sciworld_<方法>_8gpu.sh trainer.experiment_name=$NAME \
   data.val_files=$HOME/data/sciworld/test.parquet data.val_batch_size=128 trainer.val_only=True
 ```
 
 | 方法 | qwen3-4b | gemma-2b | gemma-26b |
 |---|---|---|---|
-| rso_opsd | qwen3-4b_sciworld_ood_rso_opsd | gemma-2b_sciworld_ood_rso_opsd **(ONGOING)** | gemma-26b_sciworld_ood_rso_opsd **(ONGOING)** |
 | rso | qwen3-4b_sciworld_ood_rso | gemma-2b_sciworld_ood_rso **(ONGOING)** | gemma-26b_sciworld_ood_rso **(ONGOING)** |
 | rao | qwen3-4b_sciworld_ood_rao | gemma-2b_sciworld_ood_rao **(ONGOING)**  | gemma-26b_sciworld_ood_rao **(ONGOING)**  |
 | skill | qwen3-4b_sciworld_ood_skill | gemma-2b_sciworld_ood_skill **(ONGOING)** | gemma-26b_sciworld_ood_skill **(ONGOING)** |
 | gtopsd | qwen3-4b_sciworld_ood_gtopsd | gemma-2b_sciworld_ood_gtopsd **(ONGOING)** | gemma-26b_sciworld_ood_gtopsd **(ONGOING)** |
 | grpo | qwen3-4b_sciworld_ood_grpo | gemma-2b_sciworld_ood_grpo **(ONGOING)** | gemma-26b_sciworld_ood_grpo **(ONGOING)** |
 
-### 4. ScienceWorld(训练 + 测评;java 11+、主机内存 ≥240G;测评 = README §四 val_only,MODEL 换本块 ckpt)
+### 4. (PENDING) ScienceWorld(训练 + 测评;java 11+、主机内存 ≥240G;测评 = README §四 val_only,MODEL 换本块 ckpt)
 
 | 方法 | qwen3-4b | gemma-2b | gemma-26b |
 |---|---|---|---|
-| rso_opsd | qwen3-4b_sciworld_rso_opsd | gemma-2b_sciworld_rso_opsd **(ONGOING)** | gemma-26b_sciworld_rso_opsd **(ONGOING)** |
-| rso | qwen3-4b_sciworld_rso | gemma-2b_sciworld_rso | gemma-26b_sciworld_rso |
+| rso | qwen3-4b_sciworld_rso | gemma-2b_sciworld_rso **(ONGOING)** | gemma-26b_sciworld_rso **(ONGOING)** |
 | rao | qwen3-4b_sciworld_rao | gemma-2b_sciworld_rao | gemma-26b_sciworld_rao |
 | skill | qwen3-4b_sciworld_skill | gemma-2b_sciworld_skill | gemma-26b_sciworld_skill |
 | gtopsd | qwen3-4b_sciworld_gtopsd | gemma-2b_sciworld_gtopsd | gemma-26b_sciworld_gtopsd |
 | grpo | qwen3-4b_sciworld_grpo | gemma-2b_sciworld_grpo | gemma-26b_sciworld_grpo |
+
+ckpt 策略(所有训练 run 统一,脚本已配好):每 5 步 val + 存最新 ckpt(保 1 份)+ 自动保留 val 最优一份(`$OUT/ckpts/best`);全量测评一律用 best。
 
 前 5 步健康检查(所有训练 run):`episode/valid_action_ratio` > 0.9;递归另看 `rso/delegating_trees` > 0、`rso/G_negative_ratio` ≡ 0;异常即停排查。
 

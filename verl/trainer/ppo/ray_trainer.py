@@ -890,6 +890,9 @@ class RayPPOTrainer:
         for k, v in success_rate.items():
             metric_dict[f'val/{k}'] = v
 
+        # [best-ckpt] 每次验证后更新历史最优(2026-09-19 用户指令);三个 fit 实现里
+        # _validate 均先于 _save_checkpoint 同轮执行,故 best 判定恰作用于同步的保存
+        self._track_best_val(metric_dict)
         return metric_dict
 
     def init_workers(self):
@@ -984,18 +987,14 @@ class RayPPOTrainer:
 
         actor_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(self.config.trainer.default_hdfs_dir, f"global_step_{self.global_steps}", "actor")
 
-        remove_previous_ckpt_in_save = self.config.trainer.get("remove_previous_ckpt_in_save", False)
-        if remove_previous_ckpt_in_save:
-            print("Warning: remove_previous_ckpt_in_save is deprecated," + " set max_actor_ckpt_to_keep=1 and max_critic_ckpt_to_keep=1 instead")
-        max_actor_ckpt_to_keep = self.config.trainer.get("max_actor_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
-        max_critic_ckpt_to_keep = self.config.trainer.get("max_critic_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
-
-        self.actor_rollout_wg.save_checkpoint(actor_local_path, actor_remote_path, self.global_steps, max_ckpt_to_keep=max_actor_ckpt_to_keep)
+        # [best-ckpt 2026-09-19] worker 端轮换停用(传 None),保留策略统一在
+        # _retain_latest_and_best:最近 max_actor_ckpt_to_keep 份(缺省 1)+ val 最优 1 份
+        self.actor_rollout_wg.save_checkpoint(actor_local_path, actor_remote_path, self.global_steps, max_ckpt_to_keep=None)
 
         if self.use_critic:
             critic_local_path = os.path.join(local_global_step_folder, "critic")
             critic_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(self.config.trainer.default_hdfs_dir, f"global_step_{self.global_steps}", "critic")
-            self.critic_wg.save_checkpoint(critic_local_path, critic_remote_path, self.global_steps, max_ckpt_to_keep=max_critic_ckpt_to_keep)
+            self.critic_wg.save_checkpoint(critic_local_path, critic_remote_path, self.global_steps, max_ckpt_to_keep=None)
 
         # save dataloader
         dataloader_local_path = os.path.join(local_global_step_folder, "data.pt")
@@ -1006,6 +1005,63 @@ class RayPPOTrainer:
         local_latest_checkpointed_iteration = os.path.join(self.config.trainer.default_local_dir, "latest_checkpointed_iteration.txt")
         with open(local_latest_checkpointed_iteration, "w") as f:
             f.write(str(self.global_steps))
+
+        self._retain_latest_and_best()
+
+    # ================= best + latest ckpt 保留(2026-09-19 用户指令) =================
+    # 指令:每 5 步验一次 val 并保存结果;保留 val 表现最好的 ckpt;每次保存最新的 ckpt。
+    # 实现:_track_best_val 在每次 _validate 末尾更新历史最优并挂起标记;
+    # _retain_latest_and_best 在每次保存后 (a) 若挂起/尚无 best,把本次保存记为 best
+    # 并刷新 ckpts/best 软链与 best_ckpt.json;(b) 删除既非最近 N 份也非 best 的历史 ckpt。
+    # 指标键由 +trainer.best_ckpt_metric 配置(越大越好;缺省 val/success_rate)。
+    def _track_best_val(self, metric_dict):
+        key = self.config.trainer.get("best_ckpt_metric", "val/success_rate")
+        val = metric_dict.get(key)
+        if val is None:
+            if not getattr(self, "_best_metric_warned", False):
+                self._best_metric_warned = True
+                print(f"[best-ckpt] WARNING metric {key!r} not in val metrics "
+                      f"(available: {sorted(metric_dict)}); best not updated this round")
+            return
+        prev = getattr(self, "_best_val_value", None)
+        if prev is None or float(val) > prev:
+            self._best_val_value = float(val)
+            self._best_pending = True
+            print(f"[best-ckpt] new best {key}={float(val):.4f} at step {self.global_steps}")
+
+    def _retain_latest_and_best(self):
+        import json as _json
+        import shutil as _shutil
+        root = self.config.trainer.default_local_dir
+        steps = list(getattr(self, "_saved_ckpt_steps", []))
+        steps.append(int(self.global_steps))
+        # best 落点:val 判定挂起时;或首个保存兜底(保证 best 永远存在)
+        if getattr(self, "_best_pending", False) or getattr(self, "_best_ckpt_step", None) is None:
+            self._best_ckpt_step = int(self.global_steps)
+            self._best_pending = False
+            link = os.path.join(root, "best")
+            tmp = link + ".tmp"
+            try:
+                if os.path.islink(tmp) or os.path.exists(tmp):
+                    os.remove(tmp)
+                os.symlink(f"global_step_{self.global_steps}", tmp)
+                os.replace(tmp, link)
+            except OSError as e:
+                print(f"[best-ckpt] symlink refresh failed ({e}); marker json still written")
+            with open(os.path.join(root, "best_ckpt.json"), "w") as f:
+                _json.dump({"step": self._best_ckpt_step,
+                            "metric": self.config.trainer.get("best_ckpt_metric", "val/success_rate"),
+                            "value": getattr(self, "_best_val_value", None)}, f)
+        keep_latest = int(self.config.trainer.get("max_actor_ckpt_to_keep", 1) or 1)
+        protect = set(steps[-keep_latest:]) | {self._best_ckpt_step}
+        for s in steps:
+            if s in protect:
+                continue
+            p = os.path.join(root, f"global_step_{s}")
+            if os.path.exists(p):
+                print(f"[best-ckpt] pruning stale ckpt: {p}")
+                _shutil.rmtree(p, ignore_errors=True)
+        self._saved_ckpt_steps = sorted(protect)
 
     def _load_checkpoint(self):
         if self.config.trainer.resume_mode == "disable":

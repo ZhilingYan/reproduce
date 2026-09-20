@@ -66,9 +66,9 @@ python examples/data_preprocess/make_sciworld_test_parquet.py    # 官方 test �
 | 1 | GRPO | `run_synth_grpo_8gpu.sh` | `run_search_grpo_8gpu.sh` | `run_sciworld_grpo_8gpu.sh` |
 | 2 | GRPO + GT-OPSD | `run_synth_gtopsd_8gpu.sh` | `run_search_gtopsd_8gpu.sh` | `run_sciworld_gtopsd_8gpu.sh` |
 | 3 | SDAR(技能库特权) | `run_synth_skill_8gpu.sh` | `run_search_skill_8gpu.sh` | `run_sciworld_skill_8gpu.sh` |
-| 4 | RSO(递归) | `run_synth_rso_8gpu.sh` | `run_search_rso_8gpu.sh` | `run_sciworld_rso_8gpu.sh` |
-| 5 | RSO+OPSD(递归) | `run_synth_rso_opsd_8gpu.sh` | `run_search_rso_opsd_8gpu.sh` | `run_sciworld_rso_opsd_8gpu.sh` |
-| 6 | RAO(递归 baseline,参数与 RSO 对齐) | `run_synth_rao_8gpu.sh` | `run_search_rao_8gpu.sh` | `run_sciworld_rao_8gpu.sh` |
+| 4 | RAO(递归 baseline,参数与 RSO 对齐) | `run_synth_rao_8gpu.sh` | `run_search_rao_8gpu.sh` | `run_sciworld_rao_8gpu.sh` |
+| 5 | RSO(递归) | `run_synth_rso_8gpu.sh` | `run_search_rso_8gpu.sh` | `run_sciworld_rso_8gpu.sh` |
+
 
 脚本都在 `examples/rso_8gpu/`;可调的只有 `MODEL / TP / MICRO_BSZ / OUT`(递归另有 `TRACE`),
 脚本内算法与底座参数已配好,**请勿改动**。`MICRO_BSZ` 只改梯度累积粒度,数学等价,OOM 时放心调小。
@@ -91,6 +91,11 @@ MODEL=Qwen/Qwen3-4B-Instruct-2507 OUT=$HOME/rso_runs/sciworld_rso_opsd \
   bash examples/rso_8gpu/run_sciworld_rso_opsd_8gpu.sh
 ```
 
+- ckpt 策略(所有实验统一):每 5 步验一次 val 并保存结果;每 5 步存最新 ckpt(只保 1 份)
+  并自动保留 **val 最优**一份——`$OUT/ckpts/best` 软链指向最优 step,`best_ckpt.json`
+  记录 {step, 指标, 数值}(指标:textcraft/search = val/success_rate,
+  sciworld = val/sciworld/test_score);每份 ckpt 的 `actor/huggingface/` 含可直接加载的
+  HF 权重(无需手动 FSDP 合并)。
 - 曲线:`tensorboard --logdir $OUT/tensorboard`。训练中每 5 步 val 一次:textcraft = val100
   的 easy+medium 50 题;search = val_sub 45 题(per-source 三桶);sciworld = 固定 50 dev case
   (per-task 分桶,identify-life-stages 猝死族单列)。
@@ -106,10 +111,10 @@ MODEL=Qwen/Qwen3-4B-Instruct-2507 OUT=$HOME/rso_runs/sciworld_rso_opsd \
 ```bash
 # flat(1-3)与未训练基座
 python scripts_rso/eval_full_val.py \
-  --model <ckpt>/global_step_150/actor/huggingface --out <dir>/eval_full --split val --tp 2
+  --model <ckpt>/best/actor/huggingface --out <dir>/eval_full --split val --tp 2
 # 递归(4-6)
 python scripts_rso/eval_full_val.py \
-  --model <ckpt>/global_step_150/actor/huggingface --out <dir>/eval_full --split val \
+  --model <ckpt>/best/actor/huggingface --out <dir>/eval_full --split val \
   --recursive --per-agent-steps 25 --max-depth 6 --max-steps 200 --tp 2
 ```
 
@@ -118,7 +123,7 @@ python scripts_rso/eval_full_val.py \
 
 ### Search-QA(test_3src.parquet,22,398 题 = musique 2,417 + 2wiki 12,576 + hotpotqa 7,405)
 
-训练同款脚本 + 三项覆盖(ckpt 用 `MODEL=<ckpt>/global_step_*/actor/huggingface`):
+训练同款脚本 + 三项覆盖(ckpt 用 `MODEL=<ckpt>/best/actor/huggingface`(val 最优;旧策略产物无 best 软链时用最终 global_step_*)):
 
 ```bash
 MODEL=<ckpt_hf_dir> bash examples/rso_8gpu/run_search_gtopsd_8gpu.sh \

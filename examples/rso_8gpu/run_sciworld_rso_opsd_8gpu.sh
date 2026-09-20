@@ -51,6 +51,7 @@ python3 -m verl.trainer.main_rso_opsd_sciworld \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.actor.entropy_coeff=0 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
+    "actor_rollout_ref.actor.checkpoint.contents=[model,optimizer,extra,hf_model]" \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=2 \
@@ -90,7 +91,8 @@ python3 -m verl.trainer.main_rso_opsd_sciworld \
     trainer.ray_wait_register_center_timeout=600 \
     trainer.nnodes=1 \
     trainer.save_freq=5 \
-    +trainer.max_actor_ckpt_to_keep=2 \
+    +trainer.max_actor_ckpt_to_keep=1 \
+    +trainer.best_ckpt_metric=val/sciworld/test_score \
     trainer.test_freq=5 \
     trainer.total_epochs=150 \
     trainer.rollout_data_dir=$OUT/rollouts \
