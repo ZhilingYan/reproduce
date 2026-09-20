@@ -41,7 +41,8 @@ bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log &   # 
 ```
 
 数据原料:`$MUSIQUE_RAW` = MuSiQue 官方数据(github.com/StonyBrookNLP/musique 同源:
-`pip install gdown && gdown 1tGdADlNjWFaHLeZZGShh2IRcpO6Lv24h -O musique_v1.0.zip && unzip musique_v1.0.zip -d ~/data/musique_official`);
+`pip install gdown && gdown 1tGdADlNjWFaHLeZZGShh2IRcpO6Lv24h -O musique_v1.0.zip && unzip musique_v1.0.zip -d ~/data/musique_official`;
+gdown 遇 Drive 配额时浏览器手动下 https://drive.google.com/file/d/1tGdADlNjWFaHLeZZGShh2IRcpO6Lv24h);
 `$FLASHRAG_RAW` = FlashRAG 的 2wiki train.jsonl;`$WIKI2_DATA_IDS` = 2wiki 官方 data_ids.zip
 解压目录(下载链接均在脚本头注释):
 
