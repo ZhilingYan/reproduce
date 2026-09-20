@@ -2,10 +2,15 @@
 # 制作新的 SearchQA 训练集,替换原 nq+hotpotqa 训练混合(测试集不变,仍用
 # ~/data/searchR1_processed_direct/test.parquet 的 7 个子 benchmark)。
 #
-# 输入:FlashRAG_datasets 的原始 jsonl(已下载到项目盘):
-#   $FLASHRAG_RAW/musique_train.jsonl          19,938 行
-#   $FLASHRAG_RAW/2wikimultihopqa_train.jsonl  15,000 行(下载链接见 RAW_DIR 处注释)
-#   每行:{"id", "question", "golden_answers", "metadata"{各子集自有字段}}
+# 输入(2026-09-19 起 musique 换官方源,产物经全量对拍与 FlashRAG 源逐行零差异):
+#   $MUSIQUE_RAW/musique_ans_v1.0_train.jsonl   官方 19,938 行(下载见 MUSIQUE_RAW 处注释)
+#   $FLASHRAG_RAW/2wikimultihopqa_train.jsonl   15,000 行(下载链接见 RAW_DIR 处注释)
+# 官方行 → 内部行的变换(2026-09-19 与 FlashRAG musique_train.jsonl 全量 19,938 行
+# 对拍推导,q/答案/分解/支撑段零不一致):按文件序 i 记 id=train_{i};
+# golden_answers = [answer] + answer_aliases;metadata = {answerable,
+# question_decomposition:[各跳{id,question,answer,paragraph_support_idx,
+# support_paragraph=paragraphs[paragraph_support_idx] 的
+# {idx,title,paragraph_text,is_supporting} 投影}]}。
 #
 # 输出:~/data/searchR1_musique_2wiki/train.parquet,共 34,938 行。
 # 行格式逐列复刻 examples/data_preprocess/preprocess_search_r1_dataset.py 的
@@ -22,11 +27,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 RAW_DIR = os.environ.get("FLASHRAG_RAW", os.path.expanduser("~/data/flashrag_raw"))
-# FlashRAG 原始 jsonl 下载(两个文件放进 RAW_DIR,命名 musique_train.jsonl / 2wikimultihopqa_train.jsonl):
-#   https://huggingface.co/datasets/RUC-NLPIR/FlashRAG_datasets/resolve/main/musique/train.jsonl
+# 2wiki 的 FlashRAG jsonl 下载(放进 RAW_DIR,命名 2wikimultihopqa_train.jsonl):
 #   https://huggingface.co/datasets/RUC-NLPIR/FlashRAG_datasets/resolve/main/2wikimultihopqa/train.jsonl
+MUSIQUE_RAW = os.environ.get("MUSIQUE_RAW", os.path.expanduser("~/data/musique_official/data"))
+# MuSiQue 官方数据下载(github.com/StonyBrookNLP/musique 的 download_data.sh 同源):
+#   pip install gdown && gdown 1tGdADlNjWFaHLeZZGShh2IRcpO6Lv24h -O musique_v1.0.zip
+#   unzip musique_v1.0.zip -d ~/data/musique_official   # 得 data/musique_ans_v1.0_train.jsonl
 REF_TEST = os.path.expanduser("~/data/searchR1_processed_direct/test.parquet")
-OUT_DIR = os.path.expanduser("~/data/searchR1_musique_2wiki")
+OUT_DIR = os.environ.get("SEARCHQA_OUT", os.path.expanduser("~/data/searchR1_musique_2wiki"))
 
 SYSTEM_CONTENT = "You are a helpful and harmless assistant."  # 与原脚本 DEFAULT_SYSTEM_CONTENT 一致
 ABILITY = "fact-reasoning"  # 现有 parquet 里全部行都是这个值
@@ -67,14 +75,41 @@ def build_row(raw, data_source, index):
     }
 
 
+def musique_official_to_internal(obj, i):
+    """官方 musique_ans 行 → FlashRAG 等价内部行(变换规则见文件头,已全量对拍验证)。"""
+    paras = {p["idx"]: p for p in obj["paragraphs"]}
+    decomposition = []
+    for hop in obj["question_decomposition"]:
+        ref = paras[hop["paragraph_support_idx"]]
+        decomposition.append({
+            "id": hop["id"],
+            "question": hop["question"],
+            "answer": hop["answer"],
+            "paragraph_support_idx": hop["paragraph_support_idx"],
+            "support_paragraph": {"idx": ref["idx"], "title": ref["title"],
+                                  "paragraph_text": ref["paragraph_text"],
+                                  "is_supporting": ref["is_supporting"]},
+        })
+    return {
+        "id": f"train_{i}",
+        "question": obj["question"],
+        "golden_answers": [obj["answer"]] + list(obj.get("answer_aliases") or []),
+        "metadata": {"answerable": obj.get("answerable", True),
+                     "question_decomposition": decomposition},
+    }
+
+
 def main():
     rows = []
-    for fname, source in [("musique_train.jsonl", "musique"),
-                          ("2wikimultihopqa_train.jsonl", "2wikimultihopqa")]:
-        with open(os.path.join(RAW_DIR, fname)) as f:
-            for line in f:
-                rows.append(build_row(json.loads(line), source, index=len(rows)))
-        print(f"{source}: 累计 {len(rows)} 行")
+    with open(os.path.join(MUSIQUE_RAW, "musique_ans_v1.0_train.jsonl")) as f:
+        for i, line in enumerate(f):
+            rows.append(build_row(musique_official_to_internal(json.loads(line), i),
+                                  "musique", index=len(rows)))
+    print(f"musique(官方源): 累计 {len(rows)} 行")
+    with open(os.path.join(RAW_DIR, "2wikimultihopqa_train.jsonl")) as f:
+        for line in f:
+            rows.append(build_row(json.loads(line), "2wikimultihopqa", index=len(rows)))
+    print(f"2wikimultihopqa: 累计 {len(rows)} 行")
 
     df = pd.DataFrame(rows)
 

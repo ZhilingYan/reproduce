@@ -40,12 +40,14 @@ cat $local_dir/part_* > $local_dir/e5_Flat.index && gzip -d $local_dir/wiki-18.j
 bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log &   # http://0.0.0.0:8000/retrieve
 ```
 
-数据(原料下载链接在各脚本头注释;`$FLASHRAG_RAW` = FlashRAG 两个 train.jsonl,
-`$WIKI2_DATA_IDS` = 2wiki 官方 data_ids.zip 解压目录):
+数据原料:`$MUSIQUE_RAW` = MuSiQue 官方数据(github.com/StonyBrookNLP/musique 同源:
+`pip install gdown && gdown 1tGdADlNjWFaHLeZZGShh2IRcpO6Lv24h -O musique_v1.0.zip && unzip musique_v1.0.zip -d ~/data/musique_official`);
+`$FLASHRAG_RAW` = FlashRAG 的 2wiki train.jsonl;`$WIKI2_DATA_IDS` = 2wiki 官方 data_ids.zip
+解压目录(下载链接均在脚本头注释):
 
 ```bash
 python examples/data_preprocess/preprocess_search_r1_dataset.py     # ① 官方测试集 → ~/data/searchR1_processed_direct/
-python examples/data_preprocess/preprocess_musique_2wiki_train.py   # ② 训练集 34,938 行 → ~/data/searchR1_musique_2wiki/train.parquet
+python examples/data_preprocess/preprocess_musique_2wiki_train.py   # ② 训练集 34,938 行(musique 官方源,产物与旧 FlashRAG 源全量对拍零差异)
 python examples/data_preprocess/convert_2wiki_evidences_to_decomp.py # ③ 2wiki evidences → question_decomposition 回填
 python examples/data_preprocess/make_searchrso_data_products.py     # ④ val_sub(3源×15=45)+ val_smoke + test_3src(22,398)+ decomp_store.json
 ```
