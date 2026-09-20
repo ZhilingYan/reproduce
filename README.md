@@ -28,7 +28,14 @@ python scripts_rso/prepare_synth_parquet.py --out ~/data/verl-agent/synth_full/t
 
 ### Search-QA(musique / 2wiki / hotpotqa)
 
-检索服务(wiki-18 语料 + e5 索引,约 75GB,Search-R1 官方流程):
+**成品数据随仓提供(`data/searchqa/`,直接取用,无需跑下方预处理管线):**
+
+```bash
+bash data/searchqa/install.sh   # 落位到脚本缺省路径:train 34,938 / val_sub 45 / val_smoke 9 /
+                                # decomp_store.json / test_3src 22,398(全量测评集)
+```
+
+检索服务仍需自建(wiki-18 语料 + e5 索引,约 75GB,不随仓;Search-R1 官方流程):
 
 ```bash
 conda create -n retriever python=3.10 -y && conda activate retriever
@@ -40,7 +47,7 @@ cat $local_dir/part_* > $local_dir/e5_Flat.index && gzip -d $local_dir/wiki-18.j
 bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log &   # http://0.0.0.0:8000/retrieve
 ```
 
-数据原料:`$MUSIQUE_RAW` = MuSiQue 官方数据(github.com/StonyBrookNLP/musique 同源:
+从源复现(可选,产物与随仓数据一致)——数据原料:`$MUSIQUE_RAW` = MuSiQue 官方数据(github.com/StonyBrookNLP/musique 同源:
 `pip install gdown && gdown 1tGdADlNjWFaHLeZZGShh2IRcpO6Lv24h -O musique_v1.0.zip && unzip musique_v1.0.zip -d ~/data/musique_official`;
 gdown 遇 Drive 配额时浏览器手动下 https://drive.google.com/file/d/1tGdADlNjWFaHLeZZGShh2IRcpO6Lv24h);
 `$FLASHRAG_RAW` = FlashRAG 的 2wiki train.jsonl;`$WIKI2_DATA_IDS` = 2wiki 官方 data_ids.zip
