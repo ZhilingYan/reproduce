@@ -12,6 +12,8 @@
 | gemma-2b | `google/gemma-4-E2B-it` | 需单独环境:transformers ≥ 5.x + 支持 gemma-4 的近期 vllm |
 | gemma-26b | `google/gemma-4-26B-A4B-it` | 需单独环境:transformers ≥ 5.x + 支持 gemma-4 的近期 vllm;建议 TP=4、MICRO_BSZ=1 |
 
+记得关掉thinking
+
 gemma-26b需要2节点*8 H100，共16 GPU训练
 
 ## 实验名 = bash 参数
