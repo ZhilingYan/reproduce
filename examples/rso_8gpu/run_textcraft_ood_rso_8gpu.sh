@@ -1,0 +1,117 @@
+# textcraft_ood:textcraft 训练出的 ckpt 在真 TextCraft(ADaPT 官方环境,Minecraft 1.16.5 配方)
+# 上的 OOD 推理,只做 trainer.val_only 推理、不训练;与第 1 块的 textcraft(= textcraft_synth 训练)
+# 是不同实验,实验名用 <model>_textcraft_ood_<method>,勿与 <model>_textcraft_<method> 混用。
+# 任务集:官方式 test 划分 84 题(合成深度 >=2 的物品每 5 个抽 1,附 <=10 条干扰配方)。
+# 前置:bash examples/data_preprocess/fetch_textcraft_recipes.sh(配方,sha256 校验)
+#       python examples/data_preprocess/make_textcraft_ood_parquet.py(84 行 dummy parquet)
+# prompt:env_name=textcraft_ood 自动启用 synth 同构派生的 OOD 模板(prompts/textcraft_ood.py)。
+# 递归推理(服务所有递归方法的 ckpt:MODEL=<ckpt>/best/actor/huggingface)。
+# 相对 synth 训练口径的两处评测器修正,保证与 flat 对照公平:
+#   root_max_steps=100    root 预算对齐 flat 的 env.max_steps=100(synth 口径 root 与子同为 25);子 agent 仍 25
+#   stuck_detection=False 卡死检测只作用于递归路径、flat 没有,对照时是单边惩罚,评测时关闭
+set -x
+# [口径 2026-09-11] 递归方法:只训 medium;训练中 val=val100 的 easy+medium 50 题。
+#   其余参数不变(训练 env.max_steps=200、评测 --max-steps 200 均不动)。
+# ============================================================================
+# RSO / TextCraft-Synth — RSO(我们的方法:A_out + α·Φ 进展优势)   (8 GPU 版)
+# ============================================================================
+# 与三条 flat baseline 的关系:同一环境、同一数据、同一批量;差异只有两组:
+#   [算法] main_rso + adv_estimator=rso + +algorithm.rso.*(见下)
+#   [底座] 递归方法按 RAO 官方口径:entropy_coeff=0(熵只记日志不进梯度)、
+#          use_kl_loss=False(官方 kl_ctl=0)、max_response_length=1024(2026-09-20 审核批注,rec 方法统一;此前 512、更早此前 8192 因生成无停止串常写满上限,lockstep 下单步 6.6h)、无 invalid_action_penalty(官方无此惩罚;RSO 的无效动作惩罚由 +algorithm.rso.invalid_coef=0.1 在优势层施加)。
+#   flat baseline 保持 SDAR 原口径不变,两套口径的差异在论文中作为方法自带设定声明。
+# 递归内核参数(env.rao.*):每 agent 25 步预算、树深上限 6 —— 与 RAO 官方
+# TextCraft-Synth 配置逐项一致(synth_rollout.py:83,89;yaml rollout_config.max_steps: 25)。
+# env.max_steps=200 是 lockstep 实现的整树全局轮数上限(官方 asyncio 无此量,纯安全墙)。
+#
+# 可调环境变量(不改脚本即可切换):
+#   MODEL      模型名。Qwen 与 Gemma 均可,如 Qwen/Qwen3.5-4B / google/gemma-4-E4B-it。
+#              gemma-4-E4B-it 需要升级 transformers/vllm(实测 pin 版加载不了),见 README 四点七的 Gemma 小节。
+#   MICRO_BSZ  actor 更新的每卡微批(默认 1)。响应长度 8192 是 flat(512)的 16 倍,
+#              序列上限 16K,任何卡都从 1 起步,确认显存有余量再调。
+#   TP         张量并行度(默认 2)。
+#   OUT        输出根目录(ckpt/rollouts/tensorboard/tree_trace)
+#   TRACE      置 1 开启 tree_trace(每棵树全部 prompt/输出/观测/委派关系落盘 jsonl,
+#              约 0.5GB/训练步,调试与分析用;默认关)
+# ============================================================================
+ENGINE=${ENGINE:-vllm}
+MODEL=${MODEL:-Qwen/Qwen3.5-4B}          # 9B 用 Qwen/Qwen3.5-9B + TP=4, 见 README 第四节
+MICRO_BSZ=${MICRO_BSZ:-1}
+TP=${TP:-2}
+OUT=${OUT:-$HOME/rso_runs/textcraft_ood_rso}
+TRACE=${TRACE:-0}
+TRACE_ARG=""
+[ "$TRACE" = "1" ] && TRACE_ARG="+env.rao.trace_dir=$OUT/tree_trace" && mkdir -p $OUT/tree_trace
+
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+mkdir -p $OUT/rollouts
+
+python3 -m verl.trainer.main_rso \
+    algorithm.adv_estimator=rso \
+    +algorithm.rso.progress_coef=0.1 \
+    +algorithm.rso.progress_clip=3 \
+    +algorithm.rso.progress_baseline_loo=True \
+    +algorithm.rso.invalid_coef=0.1 \
+    +env.rso.phi_gamma=1.0 \
+    data.train_files=$HOME/data/textcraft_ood/test.parquet \
+    data.val_files=$HOME/data/textcraft_ood/test.parquet \
+    data.train_batch_size=16 \
+    data.val_batch_size=84 \
+    data.max_prompt_length=8192 \
+    data.max_response_length=1024 \
+    data.filter_overlong_prompts=True \
+    data.truncation='left' \
+    data.return_raw_chat=True \
+    actor_rollout_ref.model.path=$MODEL \
+    actor_rollout_ref.actor.optim.lr=1e-6 \
+    actor_rollout_ref.model.use_remove_padding=True \
+    actor_rollout_ref.actor.ppo_mini_batch_size=32 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=$MICRO_BSZ \
+    actor_rollout_ref.actor.use_kl_loss=False \
+    actor_rollout_ref.actor.entropy_coeff=0 \
+    actor_rollout_ref.model.enable_gradient_checkpointing=True \
+    "actor_rollout_ref.actor.checkpoint.contents=[model,optimizer,extra,hf_model]" \
+    actor_rollout_ref.actor.fsdp_config.param_offload=False \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=$TP \
+    actor_rollout_ref.rollout.name=$ENGINE \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
+    actor_rollout_ref.rollout.max_num_batched_tokens=12288 \
+    actor_rollout_ref.rollout.enable_chunked_prefill=False \
+    actor_rollout_ref.rollout.enforce_eager=False \
+    actor_rollout_ref.rollout.free_cache_engine=False \
+    actor_rollout_ref.rollout.val_kwargs.temperature=0.4 \
+    actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.ref.fsdp_config.param_offload=True \
+    actor_rollout_ref.actor.use_invalid_action_penalty=False \
+    algorithm.use_kl_in_reward=False \
+    env.env_name=textcraft_ood \
+    env.seed=0 \
+    env.max_steps=200 \
+    +env.rao.root_max_steps=100 \
+    +env.rao.per_agent_max_steps=25 \
+    +env.rao.max_depth=6 \
+    +env.rao.state_block_scope=node \
+    +env.rao.stuck_detection=False \
+    env.history_length=2 \
+    env.rollout.n=8 \
+    env.resources_per_worker.num_cpus=0.04 \
+    trainer.critic_warmup=0 \
+    trainer.logger=['console','tensorboard'] \
+    trainer.project_name='rso_textcraft_ood' \
+    trainer.experiment_name='textcraft_ood_rso_8gpu' \
+    trainer.default_local_dir=$OUT/ckpts \
+    trainer.n_gpus_per_node=8 \
+    trainer.ray_wait_register_center_timeout=600 \
+    trainer.nnodes=1 \
+    trainer.save_freq=5 \
+    +trainer.max_actor_ckpt_to_keep=1 \
+    +trainer.best_ckpt_metric=val/success_rate \
+    trainer.rollout_data_dir=$OUT/rollouts \
+    trainer.test_freq=5 \
+    trainer.total_epochs=150 \
+    trainer.val_before_train=True $TRACE_ARG $@

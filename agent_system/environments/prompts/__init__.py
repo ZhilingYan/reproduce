@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .textcraft import *
 from .textcraft_synth import *
+from .textcraft_ood import *
 
 from .sciworld import *
 from .search import *

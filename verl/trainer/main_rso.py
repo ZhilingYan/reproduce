@@ -54,8 +54,11 @@ def validate_rso_config(config) -> None:
         "[RSO] 必须 actor.entropy_coeff=0(熵只观测不进梯度;依据 RSO_open_risks.md §二)")
     assert not bool(config.actor_rollout_ref.actor.get("use_kl_loss", False)), (
         "[RSO] 必须 actor.use_kl_loss=False(官方口径 kl_ctl=0;依据 RSO_open_risks.md §二)")
-    assert "textcraft_synth" in str(config.env.env_name).lower(), (
-        f"[RSO] Φ 依赖 textcraft_synth 的配方数据库,收到 env.env_name={config.env.env_name}")
+    _env_name = str(config.env.env_name).lower()
+    assert "textcraft_synth" in _env_name or (
+        "textcraft_ood" in _env_name and bool(config.trainer.get("val_only", False))), (
+        f"[RSO] Φ 依赖 textcraft_synth 的配方数据库;textcraft_ood(真 TextCraft OOD)只支持 "
+        f"trainer.val_only=True 的推理(Φ/优势在 val 中惰性),收到 env.env_name={config.env.env_name}")
     assert config.actor_rollout_ref.rollout.n == 1, (
         "In verl, actor_rollout_ref.rollout.n>1 is for GRPO. In verl+env, we keep n=1, and achieve GRPO by env.rollout.n")
     rso_alg = dict(config.algorithm.get("rso", {}) or {})
@@ -79,9 +82,18 @@ class RSOTaskRunner:
                                    use_shm=config.actor_rollout_ref.model.get("use_shm", False))
 
         # ---- 换点 1(main_ppo.py:95-96):递归环境管理器,不改 make_envs ----
-        from agent_system.environments.env_package.textcraft_synth.recursive_factory import (
-            make_recursive_synth_envs)
-        envs, val_envs = make_recursive_synth_envs(config)
+        _env_name = str(config.env.env_name).lower()
+        if "textcraft_synth" in _env_name:
+            from agent_system.environments.env_package.textcraft_synth.recursive_factory import (
+                make_recursive_synth_envs)
+            envs, val_envs = make_recursive_synth_envs(config)
+        elif "textcraft_ood" in _env_name:
+            # 真 TextCraft(ADaPT 官方)的 OOD 推理:走 trainer.val_only,与 synth 全量测评同路径
+            from agent_system.environments.env_package.textcraft.recursive_factory import (
+                make_recursive_textcraft_envs)
+            envs, val_envs = make_recursive_textcraft_envs(config)
+        else:
+            raise ValueError(f"[RSO] 未支持的递归环境: {config.env.env_name}")
 
         from verl.utils import hf_processor, hf_tokenizer
         trust_remote_code = config.data.get("trust_remote_code", False)

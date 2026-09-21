@@ -162,6 +162,9 @@ class TextCraftSynthRecursiveAdapter:
         self._phi_warned = False
         self.stuck_threshold = int(rao_cfg.get("stuck_threshold", stuck_threshold))
         self.stuck_window = int(rao_cfg.get("stuck_window", stuck_window))
+        # 评测时可关:卡死检测只作用于递归路径,flat 没有对应机制,做 flat↔递归对照时
+        # 它是单边惩罚(真 textcraft OOD 40 题里 8 个 root 死于此)。训练沿用官方口径,缺省开。
+        self.stuck_detection = bool(rao_cfg.get("stuck_detection", True))
 
     # ================================================================ 目标
     def root_goal(self, env_info: Dict[str, Any], obs_text: str) -> Dict[str, int]:
@@ -316,7 +319,8 @@ class TextCraftSynthRecursiveAdapter:
         """先判目标,再判本节点自己的循环(官方 agent.py:90-118:触发 → 自己 finish → 照常判分)。"""
         if self._satisfied(node, env_info):
             return NodeOutcome(done=True, success=1.0, reason=CLOSE_GOAL_MET)
-        if stuck_in_loop([t.action for t in node.history], self.stuck_threshold, self.stuck_window):
+        if self.stuck_detection and stuck_in_loop(
+                [t.action for t in node.history], self.stuck_threshold, self.stuck_window):
             return NodeOutcome(done=True, success=self.evaluate_node(node, env_info), reason=CLOSE_STUCK)
         return NodeOutcome(done=False)
 

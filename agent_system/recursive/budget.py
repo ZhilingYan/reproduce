@@ -187,3 +187,45 @@ class PerAgentBudget:
     def __repr__(self) -> str:
         return (f"<PerAgentBudget steps={self.per_agent_steps} "
                 f"max_depth={self.max_depth}>")
+
+class RootChildBudget(PerAgentBudget):
+    """root 与子 agent 预算解耦:root 单独一档,子 agent 走 per_agent_steps。
+
+    出处:sciworld 的 10 案例双臂分析——root 与子同额(30 步)会把长任务腰斩
+    (power-component 57 分 → 7 分);textcraft 真环境 OOD 评测复现同一形态
+    (40 题里 18 题的 root 精确死在第 25 步,而 flat 基线每题有 100 步)。
+    递归与 flat 做对照时,root 的额度应与 flat 的 env.max_steps 对齐,否则比的是预算不是方法。
+
+    接线点:orchestrator.py 的 `budget.allocate(0)`(root)与 `budget.allocate(top.depth + 1)`
+    (子);allocate 本就带 depth 参数,这里只覆写它,can_delegate/refusal 语义不变。
+    """
+
+    def __init__(self,
+                 root_steps: int,
+                 child_steps: int = DEFAULT_PER_AGENT_STEPS,
+                 max_depth: Optional[int] = DEFAULT_MAX_DEPTH):
+        super().__init__(per_agent_steps=child_steps, max_depth=max_depth)
+        if int(root_steps) <= 0:
+            raise ValueError(f"root_steps 必须为正整数,收到 {root_steps}")
+        self.root_steps = int(root_steps)
+
+    @classmethod
+    def from_config(cls, rao_cfg) -> "RootChildBudget":
+        """读 root_max_steps / per_agent_max_steps / max_depth。
+
+        root_max_steps 缺失时退回 per_agent_max_steps——此时行为与 PerAgentBudget 完全一致,
+        所以调用方可以无条件用本类,不需要在外面分支。
+        """
+        cfg = dict(rao_cfg or {})
+        child = int(cfg.get("per_agent_max_steps", DEFAULT_PER_AGENT_STEPS))
+        root = int(cfg.get("root_max_steps", child))
+        depth = cfg["max_depth"] if "max_depth" in cfg else DEFAULT_MAX_DEPTH
+        return cls(root_steps=root, child_steps=child,
+                   max_depth=None if depth is None else int(depth))
+
+    def allocate(self, depth: int) -> int:
+        return self.root_steps if int(depth) == 0 else self.per_agent_steps
+
+    def __repr__(self) -> str:
+        return (f"<RootChildBudget root={self.root_steps} child={self.per_agent_steps} "
+                f"max_depth={self.max_depth}>")

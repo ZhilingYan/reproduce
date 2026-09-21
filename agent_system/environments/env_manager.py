@@ -581,6 +581,15 @@ class TextCraftEnvironmentManager(EnvironmentManagerBase):
         latest step result, and the recent action history.
         """
         postprocess_text_obs = []
+        # env_name=textcraft_ood(textcraft 训练 ckpt 在真 TextCraft 上的 OOD 推理)自动换
+        # synth 同构派生的 OOD 模板(prompts/textcraft_ood.py),保持与 synth 训练 prompt
+        # "只差环境事实"的受控差异;也可用 +env.textcraft.ood_prompt=True 显式打开。
+        # 其余 env_name(原 verl-agent 的真 textcraft 训练环境)仍走原模板,行为不变。
+        _tc_cfg = getattr(self.config.env, 'textcraft', None)
+        _use_ood = ("textcraft_ood" in str(self.config.env.env_name).lower()) or (
+            bool(getattr(_tc_cfg, 'ood_prompt', False)) if _tc_cfg is not None else False)
+        _tpl_no_his = TEXTCRAFT_OOD_TEMPLATE_NO_HIS if _use_ood else TEXTCRAFT_TEMPLATE_NO_HIS
+        _tpl_his = TEXTCRAFT_OOD_TEMPLATE if _use_ood else TEXTCRAFT_TEMPLATE
         if not init and self.config.env.history_length > 0:
             memory_contexts, valid_lens = self.memory.fetch(
                 self.config.env.history_length,
@@ -597,10 +606,10 @@ class TextCraftEnvironmentManager(EnvironmentManagerBase):
                 )
 
             if init or self.config.env.history_length <= 0:
-                obs = TEXTCRAFT_TEMPLATE_NO_HIS.format(
+                obs = _tpl_no_his.format(
                     current_observation=current_observation)
             else:
-                obs = TEXTCRAFT_TEMPLATE.format(
+                obs = _tpl_his.format(
                     current_observation=current_observation,
                     step_count=len(self.memory[i]),
                     history_length=valid_lens[i],
