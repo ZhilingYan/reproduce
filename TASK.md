@@ -25,7 +25,7 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
 
 方法代号 ↔ 脚本:rso_opsd / rso / rao / skill / gtopsd / grpo(README §三 矩阵;RAO 为官方递归 baseline,各参数与 RSO 对齐;下表即优先级序:同时提交,rso_opsd 最优先、grpo 最后;bench 脚本名:textcraft=`synth`,searchqa=`search`,sciworld=`sciworld`)。
 
-### 1. TextCraft(训练 + 测评;在跑的照旧跑完,缺的补齐——第 3 块要用这五个方法的 ckpt)
+### 1. TextCraft(训练 + 测评;在跑的照旧跑完,缺的补齐——第 3、4 块要用这五个方法的 ckpt)
 
 | 方法 | qwen3-4b | gemma-2b | gemma-26b |
 |---|---|---|---|
@@ -62,7 +62,25 @@ NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/best/actor/huggingface OUT=$HOM
 | gtopsd | qwen3-4b_sciworld_ood_gtopsd | gemma-2b_sciworld_ood_gtopsd **(ONGOING)** | gemma-26b_sciworld_ood_gtopsd **(ONGOING)** |
 | grpo | qwen3-4b_sciworld_ood_grpo | gemma-2b_sciworld_ood_grpo **(ONGOING)** | gemma-26b_sciworld_ood_grpo **(ONGOING)** |
 
-### 4. (PENDING) ScienceWorld(训练 + 测评;java 11+、主机内存 ≥240G;测评 = README §四 val_only,MODEL 换本块 ckpt)
+### 4. TextCraft-OOD(仅 inference,无训练:第 1 块的 TextCraft ckpt 直接迁移到真 TextCraft 官方 test 84 题)
+
+```bash
+# textcraft ckpt 一律用 val 最优:<ckpt>/best/actor/huggingface(旧策略产物无 best 软链时用 global_step_150)
+# 脚本按方法族选:递归 rso / rao → run_textcraft_ood_rso_8gpu.sh;flat skill / gtopsd / grpo → run_textcraft_ood_grpo_8gpu.sh
+NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/best/actor/huggingface OUT=$HOME/rso_runs/$NAME \
+  bash examples/rso_8gpu/run_textcraft_ood_<rso|grpo>_8gpu.sh trainer.experiment_name=$NAME \
+  data.val_files=$HOME/data/textcraft_ood/test.parquet data.val_batch_size=84 trainer.val_only=True
+```
+
+| 方法 | qwen3-4b | gemma-2b | gemma-26b |
+|---|---|---|---|
+| rso | qwen3-4b_textcraft_ood_rso | gemma-2b_textcraft_ood_rso **(ONGOING)** | gemma-26b_textcraft_ood_rso **(ONGOING)** |
+| rao | qwen3-4b_textcraft_ood_rao | gemma-2b_textcraft_ood_rao **(ONGOING)**  | gemma-26b_textcraft_ood_rao **(ONGOING)**  |
+| skill | qwen3-4b_textcraft_ood_skill | gemma-2b_textcraft_ood_skill **(ONGOING)** | gemma-26b_textcraft_ood_skill **(ONGOING)** |
+| gtopsd | qwen3-4b_textcraft_ood_gtopsd | gemma-2b_textcraft_ood_gtopsd **(ONGOING)** | gemma-26b_textcraft_ood_gtopsd **(ONGOING)** |
+| grpo | qwen3-4b_textcraft_ood_grpo | gemma-2b_textcraft_ood_grpo **(ONGOING)** | gemma-26b_textcraft_ood_grpo **(ONGOING)** |
+
+### 5. (PENDING) ScienceWorld(训练 + 测评;java 11+、主机内存 ≥240G;测评 = README §四 val_only,MODEL 换本块 ckpt)
 
 | 方法 | qwen3-4b | gemma-2b | gemma-26b |
 |---|---|---|---|
@@ -78,7 +96,7 @@ ckpt 策略(所有训练 run 统一,脚本已配好):每 5 步 val + 存最新 c
 
 ## 交付(每条 run 两件,文件名以 $NAME 开头)
 
-**交付 1:训练进展 csv**(第 3 块无训练,免交):
+**交付 1:训练进展 csv**(第 3、4 块无训练,免交):
 
 ```bash
 python scripts_rso/export_train_progress.py --logdir $OUT/tensorboard --out ${NAME}_train_progress.csv
@@ -87,6 +105,6 @@ python scripts_rso/export_train_progress.py --logdir $OUT/tensorboard --out ${NA
 **交付 2:全量测评结果**:
 
 - textcraft:`eval_full_val.py` 的 `${NAME}_metrics.json` + 由 `*_cases.jsonl` 制作的 `${NAME}_summary.jsonl`(632 行,字段:task_id, difficulty, success, reward, turns_used, gold_plan_len, max_depth, fail_reason, n_turns_recorded, last_action, input_tokens, output_tokens, total_tokens;递归另带 n_nodes, max_depth, delegated, n_subagents, subagent_success, root_turns, sub_turns);
-- searchqa / sciworld / sciworld_ood:val_only run 的完整控制台日志 `${NAME}_eval.log`(含 per-source / per-task 分桶指标)+ 该 run 的 tensorboard 导出 `${NAME}_eval.csv`(同交付 1 脚本)。
+- searchqa / sciworld / sciworld_ood / textcraft_ood:val_only run 的完整控制台日志 `${NAME}_eval.log`(含 per-source / per-task 分桶指标)+ 该 run 的 tensorboard 导出 `${NAME}_eval.csv`(同交付 1 脚本)。
 
 全部打成一个 tar.gz。
