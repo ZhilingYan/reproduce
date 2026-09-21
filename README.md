@@ -71,6 +71,16 @@ python examples/data_preprocess/make_sciworld_dummy_parquet.py   # train/val 假
 python examples/data_preprocess/make_sciworld_test_parquet.py    # 官方 test 全量 1,819 行 → ~/data/sciworld/test.parquet
 ```
 
+### TextCraft-OOD(真 TextCraft,仅推理)
+
+TextCraft 训练的 ckpt 在真 TextCraft 环境(ADaPT 官方,Minecraft 1.16.5 配方)上的 OOD 推理。数据**全部随仓提供**:
+配方 860 个(`agent_system/environments/env_package/textcraft/textcraft_src/textcraft/recipes/`,sha256 清单同目录上级);
+任务集为官方式 test 划分 84 题(合成深度 ≥2 的物品每 5 个抽 1,每题附 ≤10 条干扰配方),由环境按划分生成。
+
+```bash
+bash data/textcraft_ood/install.sh   # → ~/data/textcraft_ood/test.parquet(84 行)
+```
+
 ## 三、训练(8 卡单节点,6 个方法)
 
 | # | 方法 | TextCraft-Synth | Search-QA | ScienceWorld |

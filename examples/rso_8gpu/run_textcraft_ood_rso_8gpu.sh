@@ -2,8 +2,7 @@
 # 上的 OOD 推理,只做 trainer.val_only 推理、不训练;与第 1 块的 textcraft(= textcraft_synth 训练)
 # 是不同实验,实验名用 <model>_textcraft_ood_<method>,勿与 <model>_textcraft_<method> 混用。
 # 任务集:官方式 test 划分 84 题(合成深度 >=2 的物品每 5 个抽 1,附 <=10 条干扰配方)。
-# 前置:bash examples/data_preprocess/fetch_textcraft_recipes.sh(配方,sha256 校验)
-#       python examples/data_preprocess/make_textcraft_ood_parquet.py(84 行 dummy parquet)
+# 前置:bash data/textcraft_ood/install.sh(配方随仓自带;parquet 落到 ~/data/textcraft_ood/)
 # prompt:env_name=textcraft_ood 自动启用 synth 同构派生的 OOD 模板(prompts/textcraft_ood.py)。
 # 递归推理(服务所有递归方法的 ckpt:MODEL=<ckpt>/best/actor/huggingface)。
 # 相对 synth 训练口径的两处评测器修正,保证与 flat 对照公平:
