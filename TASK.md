@@ -51,9 +51,9 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
 
 ```bash
 # textcraft ckpt 一律用 val 最优:<ckpt>/best/actor/huggingface(旧策略产物无 best 软链时用 global_step_150)
-NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/best/actor/huggingface OUT=$HOME/rso_runs/$NAME \
-  bash examples/rso_8gpu/run_sciworld_<方法>_8gpu.sh trainer.experiment_name=$NAME \
-  data.val_files=$HOME/data/sciworld/test.parquet data.val_batch_size=128 trainer.val_only=True
+NAME=<实验名> BENCH=sciworld MODEL=<对应 textcraft ckpt>/best/actor/huggingface OUT=$HOME/rso_runs/$NAME \
+SCRIPT=examples/rso_8gpu/run_sciworld_<方法>_8gpu.sh \
+  bash scripts_rso/run_full_eval.sh data.val_files=$HOME/data/sciworld/test.parquet data.val_batch_size=128
 ```
 
 | 方法 | qwen3-4b | gemma-2b | gemma-26b |
@@ -69,9 +69,9 @@ NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/best/actor/huggingface OUT=$HOM
 ```bash
 # textcraft ckpt 一律用 val 最优:<ckpt>/best/actor/huggingface(旧策略产物无 best 软链时用 global_step_150)
 # 脚本按方法族选:递归 rso / rao → run_textcraft_ood_rso_8gpu.sh;flat skill / gtopsd / grpo → run_textcraft_ood_grpo_8gpu.sh
-NAME=<实验名> ; MODEL=<对应 textcraft ckpt>/best/actor/huggingface OUT=$HOME/rso_runs/$NAME \
-  bash examples/rso_8gpu/run_textcraft_ood_<rso|grpo>_8gpu.sh trainer.experiment_name=$NAME \
-  data.val_files=$HOME/data/textcraft_ood/test.parquet data.val_batch_size=84 trainer.val_only=True
+NAME=<实验名> BENCH=textcraft_ood MODEL=<对应 textcraft ckpt>/best/actor/huggingface OUT=$HOME/rso_runs/$NAME \
+SCRIPT=examples/rso_8gpu/run_textcraft_ood_<rso|grpo>_8gpu.sh \
+  bash scripts_rso/run_full_eval.sh data.val_files=$HOME/data/textcraft_ood/test.parquet data.val_batch_size=84
 ```
 
 | 方法 | qwen3-4b | gemma-2b | gemma-26b |
@@ -96,7 +96,28 @@ ckpt 策略(所有训练 run 统一,脚本已配好):每 5 步 val + 存最新 c
 
 前 5 步健康检查(所有训练 run):`episode/valid_action_ratio` > 0.9;递归另看 `rso/delegating_trees` > 0、`rso/G_negative_ratio` ≡ 0;异常即停排查。
 
-## 交付(每条 run 两件,文件名以 $NAME 开头)
+## 全量测评(所有块统一用 `scripts_rso/run_full_eval.sh`)
+
+训练完毕后一律用 val 最优 ckpt(`$OUT/ckpts/best`)跑全量测评。该脚本执行的就是 README 第四节的现有
+全量测评命令(题目、解码设置都不变),另外逐题落盘,并产出交付用的 `${NAME}_cases.jsonl`(写在当前目录)。
+第 3、4 块的命令见各块;训练块(1、2、5)如下,`<方法>` 与训练时相同:
+
+```bash
+MODEL=$HOME/rso_runs/$NAME/ckpts/best/actor/huggingface
+# 1. TextCraft(eval_full_val.py 原参数;递归方法另加 --recursive --per-agent-steps 25 --max-depth 6 --max-steps 200)
+NAME=<实验名> BENCH=textcraft_synth MODEL=$MODEL OUT=$HOME/rso_runs/$NAME \
+  bash scripts_rso/run_full_eval.sh --split val --tp 2
+# 2. Search-QA(先起检索服务)
+NAME=<实验名> BENCH=searchqa MODEL=$MODEL OUT=$HOME/rso_runs/$NAME SCRIPT=examples/rso_8gpu/run_search_<方法>_8gpu.sh \
+  bash scripts_rso/run_full_eval.sh data.val_files=$HOME/data/searchR1_processed_direct/test_3src.parquet data.val_batch_size=512
+# 5. ScienceWorld
+NAME=<实验名> BENCH=sciworld MODEL=$MODEL OUT=$HOME/rso_runs/$NAME SCRIPT=examples/rso_8gpu/run_sciworld_<方法>_8gpu.sh \
+  bash scripts_rso/run_full_eval.sh data.val_files=$HOME/data/sciworld/test.parquet data.val_batch_size=128
+```
+
+已经用旧命令跑完全量测评、但还没有 `${NAME}_cases.jsonl` 的实验,用 best ckpt 按上面的命令重跑一次即可(只推理,不训练)。
+
+## 交付(文件名以 $NAME 或 bench 名开头)
 
 **交付 1:训练进展 csv**(第 3、4 块无训练,免交):
 
@@ -104,9 +125,29 @@ ckpt 策略(所有训练 run 统一,脚本已配好):每 5 步 val + 存最新 c
 python scripts_rso/export_train_progress.py --logdir $OUT/tensorboard --out ${NAME}_train_progress.csv
 ```
 
-**交付 2:全量测评结果**:
+**交付 2:全量测评结果**(指标定义见 `Ideation/ideas/RSO_evaluation_metrics.md`):
 
-- textcraft:`eval_full_val.py` 的 `${NAME}_metrics.json` + 由 `*_cases.jsonl` 制作的 `${NAME}_summary.jsonl`(632 行,字段:task_id, difficulty, success, reward, turns_used, gold_plan_len, max_depth, fail_reason, n_turns_recorded, last_action, input_tokens, output_tokens, total_tokens;递归另带 n_nodes, max_depth, delegated, n_subagents, subagent_success, root_turns, sub_turns);
-- searchqa / sciworld / sciworld_ood / textcraft_ood:val_only run 的完整控制台日志 `${NAME}_eval.log`(含 per-source / per-task 分桶指标)+ 该 run 的 tensorboard 导出 `${NAME}_eval.csv`(同交付 1 脚本)。
+| 粒度 | 文件 | 内容 | 产出方式 |
+|---|---|---|---|
+| 每个实验 | `${NAME}_cases.jsonl` | 逐题结果:每题一行,含该 benchmark 的全部逐题指标(字段见下表) | `run_full_eval.sh` 自动产出 |
+| 每个 benchmark | `<bench>_report.md` | 每个模型一组对照表(行 = 方法,列 = 汇总指标)+ 分桶表 + 事实摘要 + 总结分析 | `make_eval_report.py` 生成表格与摘要;末尾"分析"一节由执行者补写 |
+| 全部 | `rso_deliverables.tar.gz` | 以上全部 + 交付 1 | 见下方命令 |
 
-全部打成一个 tar.gz。
+`${NAME}_cases.jsonl` 的逐题字段:
+
+| benchmark | 字段 |
+|---|---|
+| 全部共有 | `name` `bench` `subset` `case_id` `success` `steps_total` `gen_tokens` `max_node_ctx` `is_recursive` `delegated` `n_delegations`;递归方法另有 `steps_root` `n_nodes` `tree_depth` |
+| textcraft | `difficulty` |
+| textcraft_ood | `goal_depth` `env_actions` `invalid_actions` `format_invalid_actions` |
+| sciworld_ood / sciworld | `task` `variation` `score`(0-100,负分裁零) |
+| searchqa | `data_source` `question_type` `hops` `em` `f1` `subem` `answer` `golds` `n_searches`(只含 musique / 2wikimultihopqa / hotpotqa) |
+
+汇总与打包(收齐全部实验的逐题文件后执行一次):
+
+```bash
+mkdir -p deliver && cp *_cases.jsonl *_train_progress.csv deliver/
+python scripts_rso/make_eval_report.py --cases-dir deliver --out-dir deliver   # 每个 bench 一份 <bench>_report.md
+# 打开每份 deliver/<bench>_report.md,在末尾"分析(执行者补写)"一节写总结分析,每条结论引用表中数字
+tar czf rso_deliverables.tar.gz deliver/
+```

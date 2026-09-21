@@ -216,6 +216,7 @@ class TextCraftWorker:
                 "extra.goal_item": self._cur_goal,
                 "extra.goal_depth": self._cur_depth,
                 "task_score": 0.0,
+                "extra.action_failed": False,
                 "extra.inventory": self._spaced_inventory(),
                 "extra.target_items": dict(self._cur_target_items),
                 "extra.commands": list(self._cur_commands),
@@ -234,6 +235,8 @@ class TextCraftWorker:
             "extra.goal_item": self._cur_goal,
             "extra.goal_depth": self._cur_depth,
             "task_score": float(reward),
+            # 全量测评"无效动作率"的原料;只是多一个 info 键,判分与成败不受影响
+            "extra.action_failed": bool(isinstance(obs, str) and obs.strip().startswith("Could not")),
             "extra.inventory": self._spaced_inventory(),
             "extra.target_items": dict(self._cur_target_items),
             "extra.commands": list(self._cur_commands),

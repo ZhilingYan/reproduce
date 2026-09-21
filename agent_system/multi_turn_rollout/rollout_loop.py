@@ -346,6 +346,10 @@ class TrajectoryCollector:
         batch_size = len(gen_batch.batch)
 
         # Initial observations from the environment
+        if self.config.trainer.get("val_case_dump_dir", None):
+            # 全量测评逐题落盘用的题目标识;只读引用,不改 gen_batch(见 val_case_dump.py)
+            self._val_env_kwargs = gen_batch.non_tensor_batch.get('env_kwargs', None)
+            self._val_data_sources = gen_batch.non_tensor_batch.get('data_source', None)
         obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.pop('env_kwargs', None))
         current_gamefiles = _gamefiles_from_infos(infos)
         current_gtpriv = _gtpriv_from_infos(infos)
@@ -454,6 +458,8 @@ class TrajectoryCollector:
             if is_done.all():
                 break
         
+        if self.config.trainer.get("val_case_dump_dir", None):
+            self._val_total_infos = total_infos
         success: Dict[str, np.ndarray] = envs.success_evaluator(
                     total_infos=total_infos,
                     total_batch_list=total_batch_list,
@@ -585,5 +591,20 @@ class TrajectoryCollector:
             traj_uid=total_traj_uid,
             tool_callings=totoal_tool_callings,
         )
-        
+
+        # 全量测评逐题落盘:只在验证且配置了 +trainer.val_case_dump_dir 时执行,只读不写回,
+        # 训练与训练中测试不传该键,这里不会被执行;_validate 的指标计算不受影响。
+        _dump_dir = self.config.trainer.get("val_case_dump_dir", None)
+        if _dump_dir and not is_train:
+            from agent_system.multi_turn_rollout.val_case_dump import dump_val_cases
+            dump_val_cases(
+                _dump_dir, total_batch_list=total_batch_list,
+                total_infos=getattr(self, "_val_total_infos", None),
+                episode_rewards=total_episode_rewards, episode_lengths=total_episode_lengths,
+                tool_callings=totoal_tool_callings,
+                env_kwargs=getattr(self, "_val_env_kwargs", None),
+                data_sources=getattr(self, "_val_data_sources", None),
+                tokenizer=self.tokenizer,
+                node_records=getattr(self, "last_node_records", None))
+
         return gen_batch_output

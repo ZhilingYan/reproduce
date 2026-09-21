@@ -128,6 +128,10 @@ MODEL=Qwen/Qwen3-4B-Instruct-2507 OUT=$HOME/rso_runs/sciworld_rso_opsd \
 
 ## 四、全量测评
 
+实际执行统一用 `scripts_rso/run_full_eval.sh`:它跑的就是下面的命令(参数原样传入,结果不变),另外逐题落盘并生成
+交付用的 `<NAME>_cases.jsonl`(每题一行、带齐逐题指标);各方法对照报告由 `scripts_rso/make_eval_report.py` 生成。
+用法与交付格式见 [`TASK.md`](TASK.md)。
+
 ### TextCraft-Synth(632 题全难度)
 
 ```bash
@@ -163,8 +167,8 @@ MODEL=<OUT>/ckpts/best/actor/huggingface bash examples/rso_8gpu/run_sciworld_gto
 # 递归同理换 run_sciworld_rso_opsd_8gpu.sh
 ```
 
-指标:官方分(负分裁零)per-task 分桶 + main / sudden_death 宏平均;JVM 池 = val_batch_size,
-分批复用,余数 batch 自动收缩。
+控制台给出总体官方分(负分裁零)与成功率;按任务类型的分数等逐题指标见 `<NAME>_cases.jsonl` 与对照报告。
+JVM 池 = val_batch_size,分批复用,余数 batch 自动收缩。
 
 ## 五、参考基线结果(TextCraft-Synth)
 
