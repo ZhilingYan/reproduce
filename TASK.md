@@ -1,14 +1,15 @@
 # TASK — 三 benchmark 实验任务书
 
-**只需要跑没有标记的实验;标了 DONE / ONGOING 的一律不用管、不用跑。**
+**只需要跑标 TODO 的实验;标 DONE 的格子已附成绩,一律不用再跑。**
 
-2026-09-20 版,取代此前全部需求。先 `git pull` 到最新;安装/数据/训练/全量测评命令见 [`README.md`](README.md)。
+2026-10-10 版,取代此前全部需求(qwen 全线移除,只保留两个 gemma;TextCraft 已完成并回填成绩)。
+先 `git pull` 到最新;安装/数据/训练/全量测评命令见 [`README.md`](README.md)。
+成绩均为该实验 val 最优 checkpoint 的全量测评值(2026-09-24 汇入核验版);`runN / stepK` 为训练来源。
 
-## 模型(3 个)
+## 模型(2 个)
 
 | 代号 | `MODEL=` | 说明 |
 |---|---|---|
-| qwen3-4b | `Qwen/Qwen3-4B-Instruct-2507` | 仓库 pin 的环境直接用 |
 | gemma-2b | `google/gemma-4-E2B-it` | 需单独环境:transformers ≥ 5.x + 支持 gemma-4 的近期 vllm |
 | gemma-26b | `google/gemma-4-26B-A4B-it` | 需单独环境:transformers ≥ 5.x + 支持 gemma-4 的近期 vllm;建议 TP=4、MICRO_BSZ=1 |
 
@@ -25,29 +26,51 @@ NAME=<实验名> ; MODEL=<模型> OUT=$HOME/rso_runs/$NAME \
   bash examples/rso_8gpu/run_<bench脚本>_<方法>_8gpu.sh trainer.experiment_name=$NAME
 ```
 
-方法代号 ↔ 脚本:rso_opsd / rso / rao / skill / gtopsd / grpo(README §三 矩阵;RAO 为官方递归 baseline,各参数与 RSO 对齐;下表即优先级序:同时提交,rso_opsd 最优先、grpo 最后;bench 脚本名:textcraft=`synth`,searchqa=`search`,sciworld=`sciworld`)。
+方法代号 ↔ 脚本:rso / rao / skill / gtopsd / grpo(README §三 矩阵;RAO 为官方递归 baseline,
+各参数与 RSO 对齐;待跑方法按 rao → skill → gtopsd → grpo 的顺序优先;
+bench 脚本名:textcraft=`synth`,searchqa=`search`,sciworld=`sciworld`)。
 
-### 1. TextCraft(训练 + 测评;在跑的照旧跑完,缺的补齐——第 3、4 块要用这五个方法的 ckpt)
+### 1. TextCraft(训练 + 测评)— 已完成(val 632 题,成功率 %)
 
-| 方法 | qwen3-4b | gemma-2b | gemma-26b |
-|---|---|---|---|
-| rso | qwen3-4b_textcraft_rso **(DONE)** | gemma-2b_textcraft_rso **(DONE)** | gemma-26b_textcraft_rso **(DONE)** |
-| rao | qwen3-4b_textcraft_rao | gemma-2b_textcraft_rao **(DONE)**  | gemma-26b_textcraft_rao **(DONE)**  |
-| skill | qwen3-4b_textcraft_skill **(DONE)** | gemma-2b_textcraft_skill **(DONE)** | gemma-26b_textcraft_skill **(DONE)** |
-| gtopsd | qwen3-4b_textcraft_gtopsd **(DONE)** | gemma-2b_textcraft_gtopsd **(DONE)** | gemma-26b_textcraft_gtopsd **(DONE)** |
-| grpo | qwen3-4b_textcraft_grpo **(DONE)** | gemma-2b_textcraft_grpo **(DONE)** | gemma-26b_textcraft_grpo **(DONE)** |
+| 方法 | gemma-2b | gemma-26b |
+|---|---|---|
+| rso | **DONE** 29.91(189/632,run178/step30) | **DONE** 42.88(271/632,run210/step10) |
+| rao | **DONE** 16.14(102/632,run177/step30) | **DONE** 43.35(run226/step5) |
+| skill | **DONE** 16.14(102/632,run135/step60) | **DONE** 37.66(238/632,run161/step20) |
+| gtopsd | **DONE** 16.46(104/632,run134/step20) | **DONE** 38.13(241/632,run153/step20) |
+| grpo | **DONE** 17.25(109/632,run133/step10) | **DONE** 37.97(240/632,run159/step20) |
 
-### 2. Search-QA(训练 2wiki+musique;全量测评 2wiki+musique+hotpotqa(OOD),README §四 val_only 配方;先起检索服务)
 
-| 方法 | qwen3-4b | gemma-2b | gemma-26b |
-|---|---|---|---|
-| rso | qwen3-4b_searchqa_rso | gemma-2b_searchqa_rso **(ONGOING)** | gemma-26b_searchqa_rso **(ONGOING)** |
-| rao | qwen3-4b_searchqa_rao | gemma-2b_searchqa_rao | gemma-26b_searchqa_rao |
-| skill | qwen3-4b_searchqa_skill | gemma-2b_searchqa_skill | gemma-26b_searchqa_skill |
-| gtopsd | qwen3-4b_searchqa_gtopsd | gemma-2b_searchqa_gtopsd | gemma-26b_searchqa_gtopsd |
-| grpo | qwen3-4b_searchqa_grpo | gemma-2b_searchqa_grpo | gemma-26b_searchqa_grpo |
 
-### 3. ScienceWorld-OOD(仅 inference,无训练:第 1 块的 TextCraft ckpt 直接迁移到 sciworld 官方 test 1,819 变体)
+#### 1a. (TODO) 26B rso 多 checkpoint 全量 val 选优
+
+对 26B rso(run210)磁盘上尚存的每一个 checkpoint 跑 632 题全量 val(口径与上表 rso 成绩完全一致),
+选最高者作为本块 rso 的正式成绩与第 3、4 块迁移用 ckpt:
+
+```bash
+NAME=gemma-26b_textcraft_rso_step<K> BENCH=textcraft_synth MODEL=<ckpt_stepK>/actor/huggingface \
+OUT=$HOME/rso_runs/$NAME bash scripts_rso/run_full_eval.sh --split val --tp 2 \
+  --recursive --per-agent-steps 25 --max-depth 6 --max-steps 200
+```
+
+交付:每 ckpt 一份 `${NAME}_cases.jsonl` + 一张 step × 成功率(含四档分档)汇总表。
+若旧 ckpt 已被滚动删除,如实报告剩余步数,不要重训。
+
+### 2. Search-QA(训练 2wiki+musique;全量测评 2wiki+musique+hotpotqa(OOD),README §四 val_only 配方;先起检索服务;test 22,398 题,成功率 %)
+
+| 方法 | gemma-2b | gemma-26b |
+|---|---|---|
+| rso | **DONE** 34.05(7,626/22,398,run245/step30) | **DONE** 35.47(7,945/22,398,run247/step5) |
+| rao | **TODO** gemma-2b_searchqa_rao | **TODO** gemma-26b_searchqa_rao |
+| skill | **TODO** gemma-2b_searchqa_skill | **TODO** gemma-26b_searchqa_skill |
+| gtopsd | **TODO** gemma-2b_searchqa_gtopsd | **TODO** gemma-26b_searchqa_gtopsd |
+| grpo | **TODO** gemma-2b_searchqa_grpo | **TODO** gemma-26b_searchqa_grpo |
+
+> rso 分项:E2B = 2wiki 36.17 / musique 17.05 / hotpotqa 35.99;26B = 2wiki 34.91 / musique 18.58 /
+> hotpotqa 41.94。26B 另有 step50 追加评测未完成,不影响本表。
+> 检索服务是本块历史上的共同瓶颈(曾因平台判低利用率被停、HTTP 400),长跑前先确认服务稳定。
+
+### 3. ScienceWorld-OOD(仅 inference,无训练:第 1 块的 TextCraft ckpt 直接迁移到 sciworld 官方 test 1,819 变体)— 已完成(官方分 0-100 / 完全成功率 %)
 
 ```bash
 # textcraft ckpt 一律用 val 最优:<ckpt>/best/actor/huggingface(旧策略产物无 best 软链时用 global_step_150)
@@ -56,13 +79,13 @@ SCRIPT=examples/rso_8gpu/run_sciworld_<方法>_8gpu.sh \
   bash scripts_rso/run_full_eval.sh data.val_files=$HOME/data/sciworld/test.parquet data.val_batch_size=128
 ```
 
-| 方法 | qwen3-4b | gemma-2b | gemma-26b |
-|---|---|---|---|
-| rso | qwen3-4b_sciworld_ood_rso | gemma-2b_sciworld_ood_rso **(ONGOING)** | gemma-26b_sciworld_ood_rso **(ONGOING)** |
-| rao | qwen3-4b_sciworld_ood_rao | gemma-2b_sciworld_ood_rao **(ONGOING)**  | gemma-26b_sciworld_ood_rao **(ONGOING)**  |
-| skill | qwen3-4b_sciworld_ood_skill | gemma-2b_sciworld_ood_skill **(ONGOING)** | gemma-26b_sciworld_ood_skill **(ONGOING)** |
-| gtopsd | qwen3-4b_sciworld_ood_gtopsd | gemma-2b_sciworld_ood_gtopsd **(ONGOING)** | gemma-26b_sciworld_ood_gtopsd **(ONGOING)** |
-| grpo | qwen3-4b_sciworld_ood_grpo | gemma-2b_sciworld_ood_grpo **(ONGOING)** | gemma-26b_sciworld_ood_grpo **(ONGOING)** |
+| 方法 | gemma-2b | gemma-26b |
+|---|---|---|
+| rso | **DONE** 16.79 / 8.41 | **DONE** 39.79 / 17.76 |
+| rao | **DONE** 17.47 / 7.70 | **DONE** 40.04 / 15.94 |
+| skill | **DONE** 15.90 / 8.47 | **DONE** 40.12 / 9.73 |
+| gtopsd | **DONE** 16.27 / 8.41 | **DONE** 40.41 / 10.17 |
+| grpo | **DONE** 17.65 / 9.68 | **DONE** 39.87 / 9.68 |
 
 ### 4. TextCraft-OOD(仅 inference,无训练:第 1 块的 TextCraft ckpt 直接迁移到真 TextCraft 官方 test 84 题)
 
@@ -74,23 +97,23 @@ SCRIPT=examples/rso_8gpu/run_textcraft_ood_<rso|grpo>_8gpu.sh \
   bash scripts_rso/run_full_eval.sh data.val_files=$HOME/data/textcraft_ood/test.parquet data.val_batch_size=84
 ```
 
-| 方法 | qwen3-4b | gemma-2b | gemma-26b |
-|---|---|---|---|
-| rso | qwen3-4b_textcraft_ood_rso | gemma-2b_textcraft_ood_rso **(ONGOING)** | gemma-26b_textcraft_ood_rso **(ONGOING)** |
-| rao | qwen3-4b_textcraft_ood_rao | gemma-2b_textcraft_ood_rao **(ONGOING)**  | gemma-26b_textcraft_ood_rao **(ONGOING)**  |
-| skill | qwen3-4b_textcraft_ood_skill | gemma-2b_textcraft_ood_skill **(ONGOING)** | gemma-26b_textcraft_ood_skill **(ONGOING)** |
-| gtopsd | qwen3-4b_textcraft_ood_gtopsd | gemma-2b_textcraft_ood_gtopsd **(ONGOING)** | gemma-26b_textcraft_ood_gtopsd **(ONGOING)** |
-| grpo | qwen3-4b_textcraft_ood_grpo | gemma-2b_textcraft_ood_grpo **(ONGOING)** | gemma-26b_textcraft_ood_grpo **(ONGOING)** |
+| 方法 | gemma-2b | gemma-26b |
+|---|---|---|
+| rso | **TODO** gemma-2b_textcraft_ood_rso | **TODO** gemma-26b_textcraft_ood_rso |
+| rao | **TODO** gemma-2b_textcraft_ood_rao | **TODO** gemma-26b_textcraft_ood_rao |
+| skill | **TODO** gemma-2b_textcraft_ood_skill | **TODO** gemma-26b_textcraft_ood_skill |
+| gtopsd | **TODO** gemma-2b_textcraft_ood_gtopsd | **TODO** gemma-26b_textcraft_ood_gtopsd |
+| grpo | **TODO** gemma-2b_textcraft_ood_grpo | **TODO** gemma-26b_textcraft_ood_grpo |
 
-### 5. (PENDING) ScienceWorld(训练 + 测评;java 11+、主机内存 ≥240G;测评 = README §四 val_only,MODEL 换本块 ckpt)
+### 5. ScienceWorld(训练 + 测评;java 11+、主机内存 ≥240G;测评 = README §四 val_only,MODEL 换本块 ckpt;官方分 0-100 / 完全成功率 %)
 
-| 方法 | qwen3-4b | gemma-2b | gemma-26b |
-|---|---|---|---|
-| rso | qwen3-4b_sciworld_rso | gemma-2b_sciworld_rso **(ONGOING)** | gemma-26b_sciworld_rso **(ONGOING)** |
-| rao | qwen3-4b_sciworld_rao | gemma-2b_sciworld_rao | gemma-26b_sciworld_rao |
-| skill | qwen3-4b_sciworld_skill | gemma-2b_sciworld_skill | gemma-26b_sciworld_skill |
-| gtopsd | qwen3-4b_sciworld_gtopsd | gemma-2b_sciworld_gtopsd | gemma-26b_sciworld_gtopsd |
-| grpo | qwen3-4b_sciworld_grpo | gemma-2b_sciworld_grpo | gemma-26b_sciworld_grpo |
+| 方法 | gemma-2b | gemma-26b |
+|---|---|---|
+| rso | **DONE** 36.70 / 21.72(run231/step105) | **DONE** 48.05 / 23.91(run230/step150) |
+| rao | **TODO** gemma-2b_sciworld_rao | **TODO** gemma-26b_sciworld_rao |
+| skill | **TODO** gemma-2b_sciworld_skill | **TODO** gemma-26b_sciworld_skill |
+| gtopsd | **TODO** gemma-2b_sciworld_gtopsd | **TODO** gemma-26b_sciworld_gtopsd |
+| grpo | **TODO** gemma-2b_sciworld_grpo | **TODO** gemma-26b_sciworld_grpo |
 
 ckpt 策略(所有训练 run 统一,脚本已配好):每 5 步 val + 存最新 ckpt(保 1 份)+ 自动保留 val 最优一份(`$OUT/ckpts/best`);全量测评一律用 best。
 
@@ -139,7 +162,7 @@ python scripts_rso/export_train_progress.py --logdir $OUT/tensorboard --out ${NA
 |---|---|
 | 全部共有 | `name` `bench` `subset` `case_id` `success` `steps_total` `gen_tokens` `max_node_ctx` `is_recursive` `delegated` `n_delegations`;递归方法另有 `steps_root` `n_nodes` `tree_depth` |
 | textcraft | `difficulty` |
-| textcraft_ood | `goal_depth` `env_actions` `invalid_actions` `format_invalid_actions` |
+| textcraft_ood | `goal_depth` `env_actions` `invalid_actions`(被环境拒绝的动作数,含输出里抽不出动作的步) |
 | sciworld_ood / sciworld | `task` `variation` `score`(0-100,负分裁零) |
 | searchqa | `data_source` `question_type` `hops` `em` `f1` `subem` `answer` `golds` `n_searches`(只含 musique / 2wikimultihopqa / hotpotqa) |
 
