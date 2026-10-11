@@ -57,6 +57,7 @@ OUT=$HOME/rso_runs/$NAME bash scripts_rso/run_full_eval.sh --split val --tp 2 \
 若旧 ckpt 已被滚动删除,如实报告剩余步数,不要重训。
 
 ### 2. Search-QA(训练 2wiki+musique;全量测评 2wiki+musique+hotpotqa(OOD),README §四 val_only 配方;先起检索服务;test 22,398 题,成功率 %)
+只跑50step即可
 
 | 方法 | gemma-2b | gemma-26b |
 |---|---|---|
